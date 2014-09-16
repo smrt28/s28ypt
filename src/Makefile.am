@@ -10,5 +10,5 @@ AM_CPPFLAGS = -DSVN_REVISION="\"Configure=@SVN_REVISION@,Make=$(svnver)\""     \
 bin_PROGRAMS = s28ypt
 
 s28ypt_LDADD = @S28YPT_LIBS@
-s28ypt_SOURCES = cyp.cc
+s28ypt_SOURCES = cyp.cc safemem.cc textutils.cc
 
