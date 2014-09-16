@@ -7,8 +7,8 @@ AM_CPPFLAGS = -DSVN_REVISION="\"Configure=@SVN_REVISION@,Make=$(svnver)\""     \
 			  @S28YPT_CFLAGS@
 
 
-bin_PROGRAMS = sqlbox
+bin_PROGRAMS = s28ypt
 
-sqlbox_LDADD = @S28YPT_LIBS@
-sqlbox_SOURCES = cyp.cc
+s28ypt_LDADD = @S28YPT_LIBS@
+s28ypt_SOURCES = cyp.cc
 

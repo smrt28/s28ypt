@@ -69,6 +69,9 @@ public:
     static const size_t size = sizeof(T_t[CNT]);
 
 private:
+    SafePtr_t & operator=(const SafePtr_t &);
+    SafePtr_t(const SafePtr_t &);
+
     T_t *t;
 };
 
