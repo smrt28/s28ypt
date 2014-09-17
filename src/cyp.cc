@@ -174,7 +174,7 @@ int main(int argc, char **argv) {
     ptmp = getpass("Re-enter password:");
 
     if (strcmp(ptmp, rawpass.get()) != 0) {
-        std::cout << "err: don't match" << std::endl;
+        std::cout << "err: doesn't match" << std::endl;
         size_t sz = strlen(ptmp);
         memset(ptmp, 0, sz);
         return 1;
