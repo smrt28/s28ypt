@@ -1,5 +1,8 @@
+#include <string.h>
+
 #include <sys/mman.h>
 #include <iostream>
+
 
 #include "safemem.h"
 #include "error.h"
