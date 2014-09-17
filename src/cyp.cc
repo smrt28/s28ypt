@@ -4,6 +4,7 @@
 #include <openssl/aes.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdint.h>
 
 #include <stdlib.h>
 #include <sys/mman.h>
@@ -11,10 +12,17 @@
 #include <string>
 #include <exception>
 #include <iostream>
+#include <algorithm>
 #include <openssl/rand.h>
+
 
 #include "safemem.h"
 #include "textutils.h"
+
+
+static const int MASTER_KEY_SIZE = 32;
+
+
 
 template<typename T_t, size_t CNT = 1>
 class SafePtr_t {
@@ -50,31 +58,48 @@ private:
 class Password_t {
     typedef SafePtr_t<char, 128 + 1> PassMem_t;    
 public:
-    Password_t(const char *pass) {
-        p.zero();
-        strncpy(p.get(), pass, PassMem_t::size - 1);
+    Password_t() {
     }
     
     size_t size() const {
-        return strlen(p.get());
+        return MASTER_KEY_SIZE;
     }
 
-    const char * c_str() const {
-        return p.get();
+    const unsigned char * get() const {
+        return master.get();
     }
+
+    void init(const char *pass) {
+        SafePtr_t<unsigned char, SHA256_DIGEST_LENGTH> rawKey;
+        SafePtr_t<SHA256_CTX> ctx;
+        unsigned char *hash = rawKey.get();
+        size_t len = strlen(pass);
+        SHA256_Init(ctx.get());
+        SHA256_Update(ctx.get(), pass, len);
+        SHA256_Final(hash, ctx.get()); 
+       
+        for (int i = 0; i < 300000; ++i) {
+            SHA256_Init(ctx.get());
+            SHA256_Update(ctx.get(), hash, SHA256_DIGEST_LENGTH);
+            SHA256_Final(hash, ctx.get());
+        }
+        
+        SHA256_Init(ctx.get());
+        SHA256_Update(ctx.get(), pass, len);
+        SHA256_Update(ctx.get(), hash, SHA256_DIGEST_LENGTH);
+        SHA256_Update(ctx.get(), pass, len);
+        SHA256_Final(hash, ctx.get());
+        master.zero();
+        memcpy(master.get(), rawKey.get(),
+                std::min(SHA256_DIGEST_LENGTH, MASTER_KEY_SIZE));
+    }
+
 
 private:
-    PassMem_t p;
+    SafePtr_t<unsigned char, MASTER_KEY_SIZE> master;
 };
 
-class Seed_t {
-    static const size_t SEED_SIZE = SHA256_DIGEST_LENGTH;
-public:
-    Seed_t() {
-        RAND_bytes(seed.get(), SEED_SIZE);
-    }
-    SafePtr_t<unsigned char, SEED_SIZE> seed;    
-};
+
 
 class AES_t {
     struct Secret_t {
@@ -82,46 +107,32 @@ class AES_t {
         AES_KEY dkey;
     };
 
-    static const size_t KEY_SIZE = SHA256_DIGEST_LENGTH;
-
 public:
     static const size_t BLOCK_SIZE = AES_BLOCK_SIZE;
 
+    typedef char Block_t[BLOCK_SIZE];
+
     class Context_t {
     public:
-        Context_t() {
-            reset();
+        Context_t(void *seed = 0) {
+            reset(seed);
         }
-        char block[BLOCK_SIZE];
-        void reset() {
-            memset(block, 0, sizeof(block));
+        void reset(void *seed = 0) {
+            if (seed) {
+                memcpy(block, seed, BLOCK_SIZE);
+            } else {
+                memset(block, 0, sizeof(block));
+            }
+            counter = 0;
         }
+        Block_t block;
+        uint64_t counter;
     };
 
 
-
     void init(const Password_t &pw) {
-        SafePtr_t<unsigned char, KEY_SIZE> rawKey;
-        SafePtr_t<SHA256_CTX> ctx;
-        unsigned char *hash = rawKey.get();
-        SHA256_Init(ctx.get());
-        SHA256_Update(ctx.get(), pw.c_str(), pw.size());
-        SHA256_Final(hash, ctx.get()); 
-       
-        for (int i = 0; i < 300000; ++i) {
-            SHA256_Init(ctx.get());
-            SHA256_Update(ctx.get(), hash, KEY_SIZE);
-            SHA256_Final(hash, ctx.get());
-        }
-        
-        SHA256_Init(ctx.get());
-        SHA256_Update(ctx.get(), pw.c_str(), pw.size());
-        SHA256_Update(ctx.get(), hash, KEY_SIZE);
-        SHA256_Update(ctx.get(), pw.c_str(), pw.size());
-        SHA256_Final(hash, ctx.get()); 
-
-        AES_set_encrypt_key(hash, 256, &keys->ekey);
-        AES_set_decrypt_key(hash, 256, &keys->dkey);
+        AES_set_encrypt_key(pw.get(), 256, &keys->ekey);
+        AES_set_decrypt_key(pw.get(), 256, &keys->dkey);
     }
 
 
@@ -149,24 +160,29 @@ public:
 
 private:
     SafePtr_t<Secret_t> keys;
-    Seed_t seed;
 };
 
 
 
 int main(int argc, char **argv) {
     char *ptmp = getpass("Enter password:");
-    Password_t pass(ptmp);
     size_t sz = strlen(ptmp);
+    SafePtr_t<char, 128 + 1> rawpass;
+    strcpy(rawpass.get(), ptmp);
     memset(ptmp, 0, sz);
+
     ptmp = getpass("Re-enter password:");
 
-    if (strcmp(ptmp, pass.c_str())) {
+    if (strcmp(ptmp, rawpass.get()) != 0) {
         std::cout << "err: don't match" << std::endl;
         size_t sz = strlen(ptmp);
         memset(ptmp, 0, sz);
         return 1;
     }
+    memset(ptmp, 0, sz);
+
+    Password_t pass;
+    pass.init(rawpass.get());
 
     AES_t aes;
     aes.init(pass);
@@ -178,8 +194,12 @@ int main(int argc, char **argv) {
     memset(buf, 0, sizeof(buf));
     memcpy(buf, text, sizeof(buf));
 
-    AES_t::Context_t ctxe;
-    AES_t::Context_t ctxd;
+    AES_t::Block_t seed;
+    s28::fill_zero(seed);
+
+
+    AES_t::Context_t ctxe(seed);
+    AES_t::Context_t ctxd(seed);
 
     char *c = buf;
     for (int i = 0; i<5; i++) {

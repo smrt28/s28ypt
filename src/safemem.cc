@@ -2,7 +2,7 @@
 
 #include <sys/mman.h>
 #include <iostream>
-
+#include <openssl/rand.h>
 
 #include "safemem.h"
 #include "error.h"
@@ -34,5 +34,10 @@ void safe_free(void *p)  {
     }
     free(s);
 }
+
+void fill_random(void *p, size_t size) {
+    RAND_bytes((unsigned char *)p, (size_t)size);
+}
+
 
 } // namespace s28
