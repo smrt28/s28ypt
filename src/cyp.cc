@@ -90,14 +90,17 @@ public:
     class Context_t {
     public:
         Context_t() {
+            reset();
+        }
+        char block[BLOCK_SIZE];
+        void reset() {
             memset(block, 0, sizeof(block));
         }
-        unsigned char block[BLOCK_SIZE];
     };
 
 
 
-    void init(const Password_t &pw, bool enc) {
+    void init(const Password_t &pw) {
         SafePtr_t<unsigned char, KEY_SIZE> rawKey;
         SafePtr_t<SHA256_CTX> ctx;
         unsigned char *hash = rawKey.get();
@@ -117,30 +120,30 @@ public:
         SHA256_Update(ctx.get(), pw.c_str(), pw.size());
         SHA256_Final(hash, ctx.get()); 
 
-        std::cout << s28::hex(hash, KEY_SIZE) << std::endl;
-
         AES_set_encrypt_key(hash, 256, &keys->ekey);
         AES_set_decrypt_key(hash, 256, &keys->dkey);
     }
 
 
     void encrypt(char *in, char *out, Context_t &ctx) {
-        unsigned char tmp[BLOCK_SIZE];
+        char tmp[BLOCK_SIZE];
         for (size_t i = 0; i < BLOCK_SIZE; i++) {
             tmp[i] = ctx.block[i] ^ in[i];
         }
-        AES_encrypt((const unsigned char *)tmp, ctx.block, &keys->ekey);
-        memcpy(out, ctx.block, BLOCK_SIZE);
-        std::cout << s28::hex(ctx.block, BLOCK_SIZE) << std::endl;
+        AES_encrypt((unsigned char *)tmp, (unsigned char *)out, &keys->ekey);
+        for (size_t i = 0; i < BLOCK_SIZE; i++) {
+            ctx.block[i] = out[i] ^ in[i];
+        }
     }
 
     void decrypt(char *in, char *out, Context_t &ctx) {
-        unsigned char tmp[BLOCK_SIZE];
-        AES_decrypt((const unsigned char *)in, tmp, &keys->dkey);
+        AES_decrypt((const unsigned char *)in, (unsigned char *)out, &keys->dkey);
         for (size_t i = 0; i < BLOCK_SIZE; i++) {
-            out[i] = tmp[i] ^ ctx.block[i];
+            out[i] ^= ctx.block[i];
         }
-        memcpy(ctx.block, in, BLOCK_SIZE);
+        for (size_t i = 0; i < BLOCK_SIZE; i++) {
+            ctx.block[i] = out[i] ^ in[i];
+        }
     }
 
 
@@ -149,9 +152,9 @@ private:
     Seed_t seed;
 };
 
+
+
 int main(int argc, char **argv) {
-
-
     char *ptmp = getpass("Enter password:");
     Password_t pass(ptmp);
     size_t sz = strlen(ptmp);
@@ -166,22 +169,34 @@ int main(int argc, char **argv) {
     }
 
     AES_t aes;
-    aes.init(pass, true);
+    aes.init(pass);
 
-    char buf[AES_t::BLOCK_SIZE];
+    const char * text = ".....................a.........................";
+
+    char buf[AES_t::BLOCK_SIZE * 5];
+
     memset(buf, 0, sizeof(buf));
+    memcpy(buf, text, sizeof(buf));
+
     AES_t::Context_t ctxe;
     AES_t::Context_t ctxd;
-    std::cout << "1" << std::endl;
-    aes.encrypt(buf, buf, ctxe);
-    aes.encrypt(buf, buf, ctxe);
-    std::cout << "2" << std::endl;
 
-    aes.decrypt(buf, buf, ctxd);
-    aes.decrypt(buf, buf, ctxd);
-    std::cout << "3" << std::endl;
+    char *c = buf;
+    for (int i = 0; i<5; i++) {
+        aes.encrypt(c, c, ctxe);
+        c += AES_t::BLOCK_SIZE;
+    }
 
     std::cout << s28::hex(buf, sizeof(buf)) << std::endl;
+
+    c = buf;
+    for (int i = 0; i<5; i++) {
+        aes.decrypt(c, c, ctxd);
+        c += AES_t::BLOCK_SIZE;
+    }
+
+    std::cout << buf << std::endl;
+
 
     return 0;
 }
