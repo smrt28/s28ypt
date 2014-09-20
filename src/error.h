@@ -9,6 +9,9 @@ namespace s28 {
 namespace errcode {
     static const int MLOCK = 1;
     static const int ALLOC = 2;
+	namespace serializer {
+		static const int BOUNDS = 3;
+	}
 }
 
 class Error_t : public std::exception {

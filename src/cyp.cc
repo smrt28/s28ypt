@@ -18,7 +18,7 @@
 
 #include "safemem.h"
 #include "textutils.h"
-
+#include "endian.h"
 
 static const int MASTER_KEY_SIZE = 32;
 
@@ -162,9 +162,13 @@ private:
     SafePtr_t<Secret_t> keys;
 };
 
+namespace s28 {
+	void foo() ;
+}
 
-
-int main(int argc, char **argv) {
+int _main(int argc, char **argv) {
+	s28::foo();
+	return 0;
     char *ptmp = getpass("Enter password:");
     size_t sz = strlen(ptmp);
     SafePtr_t<char, 128 + 1> rawpass;
@@ -222,5 +226,15 @@ int main(int argc, char **argv) {
 }
 
 
+
+int main(int argc, char **argv) {
+	try {
+		_main(argc, argv);
+	} catch(const std::exception &e) {
+		std::cerr << "err: " << e.what() << std::endl;
+		return 1;
+	}
+	return 0;
+}
 
 
