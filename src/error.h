@@ -6,11 +6,19 @@
 
 namespace s28 {
 
+namespace errcat {
+
+}
+
 namespace errcode {
     static const int MLOCK = 1;
     static const int ALLOC = 2;
+	static const int INVALID_FD = 3;
+	static const int READ = 4;
+	static const int WRITE = 5;
+
 	namespace serializer {
-		static const int BOUNDS = 3;
+		static const int BOUNDS = 6;
 	}
 }
 

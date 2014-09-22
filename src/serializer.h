@@ -1,10 +1,11 @@
 #ifndef S28_SERIALIZER_H
 #define S28_SERIALIZER_H
 
+#include <string.h>
 #include <stdint.h>
 #include <string>
 
-#include "endian.h"
+#include "portable-endian.h"
 #include "error.h"
 
 namespace s28 {
@@ -80,7 +81,7 @@ private:
     }
 
     void _put(const std::string &s) {
-        put<uint16_t>(s.size());
+        put<uint16_t>(static_cast<uint16_t>(s.size()));
         put_raw(s.data(), s.size());
     }
 

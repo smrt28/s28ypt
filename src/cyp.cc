@@ -6,6 +6,11 @@
 #include <unistd.h>
 #include <stdint.h>
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
+
 #include <stdlib.h>
 #include <sys/mman.h>
 
@@ -19,6 +24,7 @@
 #include "safemem.h"
 #include "textutils.h"
 #include "endian.h"
+#include "file.h"
 
 static const int MASTER_KEY_SIZE = 32;
 
@@ -162,13 +168,41 @@ private:
     SafePtr_t<Secret_t> keys;
 };
 
-namespace s28 {
-	void foo() ;
+
+void encrypt_file(AES_t &aes,
+        const std::string &inFile,
+        const std::string &outFile)
+{
+	s28::FD_t fdin;
+	s28::FD_t fdout;
+
+	mode_t mode = S_IRUSR | S_IWUSR;
+	fdin.set(open(inFile.c_str(), O_RDONLY));
+	fdout.set(open(outFile.c_str(), O_WRONLY | O_CREAT, mode));
+
+	char buf[256];
+	char obuf[256];
+    AES_t::Context_t ctx;
+
+	for (;;) {
+		ssize_t rd = fdin.read(buf, sizeof(buf));
+		if (rd == 0) break;
+		size_t blocks = rd / AES_t::BLOCK_SIZE;
+		size_t rem = rd % AES_t::BLOCK_SIZE;
+		if (rem) blocks++;
+
+		char *in = buf, *out = obuf;
+		for (size_t i = 0; i < blocks; i++) {
+			aes.encrypt(in, out, ctx);
+			in += AES_t::BLOCK_SIZE;
+			out += AES_t::BLOCK_SIZE;
+		}
+		fdout.write(obuf, out - obuf);
+	}
 }
 
+
 int _main(int argc, char **argv) {
-	s28::foo();
-	return 0;
     char *ptmp = getpass("Enter password:");
     size_t sz = strlen(ptmp);
     SafePtr_t<char, 128 + 1> rawpass;
@@ -190,6 +224,11 @@ int _main(int argc, char **argv) {
 
     AES_t aes;
     aes.init(pass);
+	encrypt_file(aes, "/etc/passwd", "/tmp/passwd.s28");
+	return 0;
+
+
+#if 0
 
     const char * text = ".....................a.........................";
 
@@ -223,6 +262,7 @@ int _main(int argc, char **argv) {
 
 
     return 0;
+#endif
 }
 
 
