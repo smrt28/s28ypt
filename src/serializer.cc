@@ -2,7 +2,7 @@
 #include <iostream>
 
 #include "serializer.h"
-#include "endian.h"
+#include "portable-endian.h"
 
 namespace s28 {
 

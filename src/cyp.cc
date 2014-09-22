@@ -23,7 +23,7 @@
 
 #include "safemem.h"
 #include "textutils.h"
-#include "endian.h"
+#include "portable-endian.h"
 #include "file.h"
 
 static const int MASTER_KEY_SIZE = 32;
@@ -84,7 +84,7 @@ public:
         SHA256_Update(ctx.get(), pass, len);
         SHA256_Final(hash, ctx.get()); 
        
-        for (int i = 0; i < 300000; ++i) {
+        for (int i = 0; i < 3000000; ++i) {
             SHA256_Init(ctx.get());
             SHA256_Update(ctx.get(), hash, SHA256_DIGEST_LENGTH);
             SHA256_Final(hash, ctx.get());
@@ -182,6 +182,10 @@ void encrypt_file(AES_t &aes,
 
 	char buf[256];
 	char obuf[256];
+
+    s28::fill_zero(buf);
+    s28::fill_zero(obuf);
+
     AES_t::Context_t ctx;
 
 	for (;;) {
@@ -200,6 +204,45 @@ void encrypt_file(AES_t &aes,
 		fdout.write(obuf, out - obuf);
 	}
 }
+
+void decrypt_file(AES_t &aes,
+        const std::string &inFile,
+        const std::string &outFile)
+{
+	s28::FD_t fdin;
+	s28::FD_t fdout;
+
+	mode_t mode = S_IRUSR | S_IWUSR;
+	fdin.set(open(inFile.c_str(), O_RDONLY));
+	fdout.set(open(outFile.c_str(), O_WRONLY | O_CREAT, mode));
+
+	char buf[256];
+	char obuf[256];
+
+    s28::fill_zero(buf);
+    s28::fill_zero(obuf);
+
+    AES_t::Context_t ctx;
+
+	for (;;) {
+		ssize_t rd = fdin.read(buf, sizeof(buf));
+		if (rd == 0) break;
+		size_t blocks = rd / AES_t::BLOCK_SIZE;
+		size_t rem = rd % AES_t::BLOCK_SIZE;
+		if (rem) blocks++;
+
+		char *in = buf, *out = obuf;
+		for (size_t i = 0; i < blocks; i++) {
+			aes.decrypt(in, out, ctx);
+			in += AES_t::BLOCK_SIZE;
+			out += AES_t::BLOCK_SIZE;
+		}
+		fdout.write(obuf, out - obuf);
+	}
+}
+
+
+
 
 
 int _main(int argc, char **argv) {
@@ -225,6 +268,7 @@ int _main(int argc, char **argv) {
     AES_t aes;
     aes.init(pass);
 	encrypt_file(aes, "/etc/passwd", "/tmp/passwd.s28");
+	decrypt_file(aes, "/tmp/passwd.s28", "/tmp/passwd.out");
 	return 0;
 
 
