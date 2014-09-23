@@ -1,31 +1,25 @@
 #ifndef S28_ERROR_H
 #define S28_ERROR_H
 
+#include <stdint.h>
+
 #include <string>
 #include <exception>
 
+#include "errorcodes.h"
+
 namespace s28 {
 
-namespace errcat {
-
-}
-
-namespace errcode {
-    static const int MLOCK = 1;
-    static const int ALLOC = 2;
-	static const int INVALID_FD = 3;
-	static const int READ = 4;
-	static const int WRITE = 5;
-
-	namespace serializer {
-		static const int BOUNDS = 6;
-	}
-}
-
-class Error_t : public std::exception {
+class BaseError_t : public std::exception {
 public:
-    Error_t(int code, const std::string &msg) :
-        code(code), msg(msg)
+    virtual int code() const = 0;
+    virtual int category() const = 0;
+};
+
+class Error_t : public BaseError_t {
+public:
+    Error_t(const std::string &msg) :
+        msg(msg)
     {}
 
     virtual ~Error_t() throw() {}
@@ -34,11 +28,43 @@ public:
         return msg.c_str();
     }
 
-    int value() const { return code; }
 private:
-    int code;
     std::string msg;
 };
+
+
+template<int _category>
+class ErrorByCategory_t : public BaseError_t {};
+
+template<int _code>
+class ErrorByCode_t : public BaseError_t {};
+
+namespace aux {
+template<typename EC_t>
+class Error_t :
+    public s28::Error_t,
+    public ErrorByCategory_t<EC_t::CATEGORY>,
+    public ErrorByCode_t<EC_t::CODE>
+{
+public:
+    Error_t(const std::string &msg) :
+        s28::Error_t(msg)
+    {}
+    int category() const {
+        return EC_t::CATEGORY;
+    }
+    int code() const {
+        return EC_t::CODE;
+    }
+};
+}
+
+
+template<typename Code_t>
+void raise(const std::string &msg) {
+    throw aux::Error_t<Code_t>(msg);
+}
+
 
 }
 

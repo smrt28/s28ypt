@@ -137,8 +137,7 @@ private:
 
     void check(size_t len) {
         if (ofs + len > _data.end()) {
-            throw Error_t(errcode::serializer::BOUNDS,
-                    "out of bounds");
+            raise<errcode::BOUNDS>("out of bounds");
         }
     }
 

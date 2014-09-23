@@ -9,7 +9,9 @@ public:
     int release();
     void set(int fd);
     ssize_t read(void *buf, size_t len);
-    ssize_t write(void *buf, size_t count);   
+    ssize_t write(void *buf, size_t count);
+    off_t size();
+    void close();
 
 private:
     int _fd;
