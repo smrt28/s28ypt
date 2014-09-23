@@ -25,59 +25,22 @@
 #include "textutils.h"
 #include "portable-endian.h"
 #include "file.h"
-
+#include "cbc.h"
+#include "aes.h"
 static const int MASTER_KEY_SIZE = 32;
 
 
-
-template<typename T_t, size_t CNT = 1>
-class SafePtr_t {
-public:
-    SafePtr_t() : t((T_t *)s28::safe_malloc(sizeof(T_t[CNT])))
-    {}
-
-    ~SafePtr_t() {
-        s28::safe_free((void *)t);
-    }
-
-    void zero() {
-        memset(t, 0, size);
-    }
-
-    T_t * get() { return t; }
-    const T_t * get() const { return t; }
-
-    static const size_t size = sizeof(T_t[CNT]);
-
-    T_t * operator->() {
-        return t;
-    }
-
-private:
-    SafePtr_t & operator=(const SafePtr_t &);
-    SafePtr_t(const SafePtr_t &);
-
-    T_t *t;
-};
-
-
 class Password_t {
-    typedef SafePtr_t<char, 128 + 1> PassMem_t;    
 public:
-    Password_t() {
-    }
+    Password_t() {}
     
-    size_t size() const {
-        return MASTER_KEY_SIZE;
-    }
-
-    const unsigned char * get() const {
-        return master.get();
+    const char * get() const {
+        return (char *)master.get();
     }
 
     void init(const char *pass) {
-        SafePtr_t<unsigned char, SHA256_DIGEST_LENGTH> rawKey;
-        SafePtr_t<SHA256_CTX> ctx;
+        s28::SafePtr_t<unsigned char, SHA256_DIGEST_LENGTH> rawKey;
+        s28::SafePtr_t<SHA256_CTX> ctx;
         unsigned char *hash = rawKey.get();
         size_t len = strlen(pass);
         SHA256_Init(ctx.get());
@@ -100,79 +63,43 @@ public:
                 std::min(SHA256_DIGEST_LENGTH, MASTER_KEY_SIZE));
     }
 
-
 private:
-    SafePtr_t<unsigned char, MASTER_KEY_SIZE> master;
+    s28::SafePtr_t<unsigned char, MASTER_KEY_SIZE> master;
 };
 
 
-
-class AES_t {
-    struct Secret_t {
-        AES_KEY ekey;
-        AES_KEY dkey;
-    };
-
+template<bool direction, typename IO_t, typename Cipher_t, typename Context_t>
+class handle_header_t {
 public:
-    static const size_t BLOCK_SIZE = AES_BLOCK_SIZE;
-
-    typedef char Block_t[BLOCK_SIZE];
-
-    class Context_t {
-    public:
-        Context_t(void *seed = 0) {
-            reset(seed);
-        }
-        void reset(void *seed = 0) {
-            if (seed) {
-                memcpy(block, seed, BLOCK_SIZE);
-            } else {
-                memset(block, 0, sizeof(block));
-            }
-            counter = 0;
-        }
-        Block_t block;
-        uint64_t counter;
-    };
-
-
-    void init(const Password_t &pw) {
-        AES_set_encrypt_key(pw.get(), 256, &keys->ekey);
-        AES_set_decrypt_key(pw.get(), 256, &keys->dkey);
-    }
-
-
-    void encrypt(char *in, char *out, Context_t &ctx) {
-        char tmp[BLOCK_SIZE];
-        for (size_t i = 0; i < BLOCK_SIZE; i++) {
-            tmp[i] = ctx.block[i] ^ in[i];
-        }
-        AES_encrypt((unsigned char *)tmp, (unsigned char *)out, &keys->ekey);
-        for (size_t i = 0; i < BLOCK_SIZE; i++) {
-            ctx.block[i] = out[i] ^ in[i];
-        }
-    }
-
-    void decrypt(char *in, char *out, Context_t &ctx) {
-        AES_decrypt((const unsigned char *)in, (unsigned char *)out, &keys->dkey);
-        for (size_t i = 0; i < BLOCK_SIZE; i++) {
-            out[i] ^= ctx.block[i];
-        }
-        for (size_t i = 0; i < BLOCK_SIZE; i++) {
-            ctx.block[i] = out[i] ^ in[i];
-        }
-    }
-
-
-private:
-    SafePtr_t<Secret_t> keys;
+//    static void foo() {}
 };
 
 
-void encrypt_file(AES_t &aes,
+template<typename IO_t, typename Cipher_t, typename Context_t>
+class handle_header_t<true, IO_t, Cipher_t, Context_t> {
+public:
+    static void handle(Cipher_t &cipher, Context_t &ctx, IO_t &/*in*/, IO_t &out) {
+        char seed[Cipher_t::BLOCK_SIZE];
+        char seedout[Cipher_t::BLOCK_SIZE];
+        s28::fill_random(seed);
+        cipher.process(seed, seedout, ctx);
+        out.write(seedout, Cipher_t::BLOCK_SIZE);
+        //handle_header_t<false, IO_t, Cipher_t, Context_t>::foo();
+    }
+};
+
+
+
+void encrypt_file(s28::AES_t &_aes,
         const std::string &inFile,
         const std::string &outFile)
 {
+    typedef s28::CBC_t<s28::AES_t, true> Cipher_t;
+    typedef Cipher_t::Context_t Context_t;
+    Cipher_t aes(_aes);
+
+    typedef s28::FD_t IO_t;
+
 	s28::FD_t fdin;
 	s28::FD_t fdout;
 
@@ -182,33 +109,41 @@ void encrypt_file(AES_t &aes,
 
 	char buf[256];
 	char obuf[256];
-
     s28::fill_zero(buf);
     s28::fill_zero(obuf);
 
-    AES_t::Context_t ctx;
+    Context_t ctx;
 
-	for (;;) {
+    handle_header_t<true, IO_t, Cipher_t, Context_t>::
+        handle(aes, ctx, fdin, fdout);
+    
+    for (;;) {
 		ssize_t rd = fdin.read(buf, sizeof(buf));
 		if (rd == 0) break;
-		size_t blocks = rd / AES_t::BLOCK_SIZE;
-		size_t rem = rd % AES_t::BLOCK_SIZE;
+		size_t blocks = rd / s28::AES_t::BLOCK_SIZE;
+		size_t rem = rd % s28::AES_t::BLOCK_SIZE;
 		if (rem) blocks++;
 
 		char *in = buf, *out = obuf;
 		for (size_t i = 0; i < blocks; i++) {
-			aes.encrypt(in, out, ctx);
-			in += AES_t::BLOCK_SIZE;
-			out += AES_t::BLOCK_SIZE;
+			aes.process(in, out, ctx);
+			in += s28::AES_t::BLOCK_SIZE;
+			out += s28::AES_t::BLOCK_SIZE;
 		}
 		fdout.write(obuf, out - obuf);
 	}
 }
 
-void decrypt_file(AES_t &aes,
+void decrypt_file(s28::AES_t &_aes,
         const std::string &inFile,
         const std::string &outFile)
 {
+    typedef s28::CBC_t<s28::AES_t, false> Cipher_t;
+    typedef Cipher_t::Context_t Context_t;
+
+    Cipher_t aes(_aes);
+
+
 	s28::FD_t fdin;
 	s28::FD_t fdout;
 
@@ -222,20 +157,27 @@ void decrypt_file(AES_t &aes,
     s28::fill_zero(buf);
     s28::fill_zero(obuf);
 
-    AES_t::Context_t ctx;
+    Context_t ctx;
+    {
+    char seed[s28::AES_t::BLOCK_SIZE];
+    char tmp[s28::AES_t::BLOCK_SIZE];
+    fdin.read(seed, s28::AES_t::BLOCK_SIZE);
+    aes.process(seed, tmp, ctx);
+    }
+
 
 	for (;;) {
 		ssize_t rd = fdin.read(buf, sizeof(buf));
 		if (rd == 0) break;
-		size_t blocks = rd / AES_t::BLOCK_SIZE;
-		size_t rem = rd % AES_t::BLOCK_SIZE;
+		size_t blocks = rd / s28::AES_t::BLOCK_SIZE;
+		size_t rem = rd % s28::AES_t::BLOCK_SIZE;
 		if (rem) blocks++;
 
 		char *in = buf, *out = obuf;
 		for (size_t i = 0; i < blocks; i++) {
-			aes.decrypt(in, out, ctx);
-			in += AES_t::BLOCK_SIZE;
-			out += AES_t::BLOCK_SIZE;
+			aes.process(in, out, ctx);
+			in += s28::AES_t::BLOCK_SIZE;
+			out += s28::AES_t::BLOCK_SIZE;
 		}
 		fdout.write(obuf, out - obuf);
 	}
@@ -248,7 +190,7 @@ void decrypt_file(AES_t &aes,
 int _main(int argc, char **argv) {
     char *ptmp = getpass("Enter password:");
     size_t sz = strlen(ptmp);
-    SafePtr_t<char, 128 + 1> rawpass;
+    s28::SafePtr_t<char, 128 + 1> rawpass;
     strcpy(rawpass.get(), ptmp);
     memset(ptmp, 0, sz);
 
@@ -265,48 +207,13 @@ int _main(int argc, char **argv) {
     Password_t pass;
     pass.init(rawpass.get());
 
-    AES_t aes;
-    aes.init(pass);
+    s28::AES_t aes;
+    aes.init(pass.get());
 	encrypt_file(aes, "/etc/passwd", "/tmp/passwd.s28");
 	decrypt_file(aes, "/tmp/passwd.s28", "/tmp/passwd.out");
 	return 0;
 
 
-#if 0
-
-    const char * text = ".....................a.........................";
-
-    char buf[AES_t::BLOCK_SIZE * 5];
-
-    memset(buf, 0, sizeof(buf));
-    memcpy(buf, text, sizeof(buf));
-
-    AES_t::Block_t seed;
-    s28::fill_zero(seed);
-
-
-    AES_t::Context_t ctxe(seed);
-    AES_t::Context_t ctxd(seed);
-
-    char *c = buf;
-    for (int i = 0; i<5; i++) {
-        aes.encrypt(c, c, ctxe);
-        c += AES_t::BLOCK_SIZE;
-    }
-
-    std::cout << s28::hex(buf, sizeof(buf)) << std::endl;
-
-    c = buf;
-    for (int i = 0; i<5; i++) {
-        aes.decrypt(c, c, ctxd);
-        c += AES_t::BLOCK_SIZE;
-    }
-
-    std::cout << buf << std::endl;
-
-
-    return 0;
-#endif
 }
 
 
