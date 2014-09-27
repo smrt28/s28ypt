@@ -28,9 +28,19 @@ public:
         return _size;
     }
 
+    void resize(size_t size) {
+        if (size <= _size) return;
+        std::cout << "resize " << size << std::endl;
+        Type_t * newData = new Type_t[size];
+        memcpy(newData, _data, sizeof(Type_t[_size]));
+        delete [] _data;
+        _data = newData;
+        _size = size;
+    }
+
     void zero() {
         memset(_data, 0, _size);
-    }  
+    }
 
     Type_t * begin() { return _data; }
     Type_t * end() { return _data + _size; }
@@ -40,9 +50,9 @@ private:
     Type_t *_data;
 };
 
-class Serializer_t {
+class Archive_t {
 public:
-    Serializer_t(size_t len) :
+    Archive_t(size_t len) :
         _data(len),
         ofs(_data.begin())    {}
 
@@ -61,6 +71,14 @@ public:
 
     void reset() {
         ofs = _data.begin();
+    }
+
+    size_t data_size() {
+        return ofs - _data.begin();
+    }
+
+    void align(size_t blockSIze) {
+    // todo...
     }
 
 private:
@@ -111,7 +129,6 @@ private:
         s = buf;
     }
 
-
     template<typename T_t>
     T_t get_raw() {
         static const size_t len = sizeof(T_t);
@@ -130,7 +147,14 @@ private:
     template<typename T_t>
     void put_raw(const T_t *_ptr, size_t len) {
         const char *ptr = reinterpret_cast<const char *>(_ptr);
-        check(len);
+        if (ofs + len > _data.end()) {
+            size_t newLen = (ofs + len) - _data.begin();
+            size_t idx = ofs - _data.begin();
+            std::cout << "idx " << idx << std::endl;
+            //_data.resize(newLen + newLen * 0.2);
+            _data.resize(newLen);
+            ofs = _data.begin() + idx;
+        }
         memcpy(ofs, ptr, len);
         ofs += len;
     }
@@ -146,6 +170,30 @@ private:
     char * ofs;
 };
 
+
 }
+
+
+int main() {
+    try {
+        s28::Archive_t ar(1);
+        ar.put<uint32_t>(7);
+        ar.put<uint32_t>(8);
+        ar.put<uint32_t>(9);
+        ar.put<uint32_t>(10);
+
+        ar.reset();
+
+        std::cout << ar.get<uint32_t>() << std::endl;
+        std::cout << ar.get<uint32_t>() << std::endl;
+        std::cout << ar.get<uint32_t>() << std::endl;
+        std::cout << ar.get<uint32_t>() << std::endl;
+        std::cout << ar.get<uint32_t>() << std::endl;
+    } catch(const std::exception &e) {
+        std::cout << "err: " << e.what() << std::endl;
+    }
+    return 0;
+}
+
 
 #endif
