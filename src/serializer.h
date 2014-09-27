@@ -170,10 +170,9 @@ private:
     char * ofs;
 };
 
-
 }
 
-
+#if 0
 int main() {
     try {
         s28::Archive_t ar(1);
@@ -194,6 +193,6 @@ int main() {
     }
     return 0;
 }
-
+#endif
 
 #endif
