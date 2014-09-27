@@ -15,7 +15,7 @@ class Array_t {
 public:
     typedef Type_t value_type;
 
-    Array_t(size_t len) :
+    Array_t(size_t len = 16) :
         _size(len),
         _data(new Type_t[len])
     {}
@@ -30,7 +30,6 @@ public:
 
     void resize(size_t size) {
         if (size <= _size) return;
-        std::cout << "resize " << size << std::endl;
         Type_t * newData = new Type_t[size];
         memcpy(newData, _data, sizeof(Type_t[_size]));
         delete [] _data;
@@ -50,12 +49,73 @@ private:
     Type_t *_data;
 };
 
-class Archive_t {
-public:
-    Archive_t(size_t len) :
-        _data(len),
-        ofs(_data.begin())    {}
 
+typedef Array_t<char> Data_t;
+
+class Marshaller_t {
+public:
+    Marshaller_t(Data_t &data) :
+        _data(data),
+        ofs(data.begin())
+    {}
+
+    template<typename T_t>
+    void put(T_t val) {
+        _put(val);
+    }
+
+    size_t data_size() {
+        return ofs - _data.begin();
+    }
+
+private:
+    void _put(uint64_t val) { put_raw(htole64(val)); }
+    void _put(uint32_t val) { put_raw(htole32(val)); }
+    void _put(uint16_t val) { put_raw(htole16(val)); }
+    void _put(uint8_t val) { put_raw(val); }
+
+    void _put(int64_t val) { put_raw(htole64(val)); }
+    void _put(int32_t val) { put_raw(htole32(val)); }
+    void _put(int16_t val) { put_raw(htole16(val)); }
+    void _put(int8_t val) { put_raw(val); }
+
+
+    void _put(const std::string &s) {
+        put<uint16_t>(static_cast<uint16_t>(s.size()));
+        put_raw(s.data(), s.size());
+    }
+
+    template<typename T_t>
+    void put_raw(const T_t &val) {
+        put_raw(&val, sizeof(T_t));
+    }
+
+    template<typename T_t>
+    void put_raw(const T_t *_ptr, size_t len) {
+        const char *ptr = reinterpret_cast<const char *>(_ptr);
+        if (ofs + len > _data.end()) {
+            size_t newLen = (ofs + len) - _data.begin();
+            size_t idx = ofs - _data.begin();
+            _data.resize(newLen + newLen / 2);
+            ofs = _data.begin() + idx;
+        }
+        memcpy(ofs, ptr, len);
+        ofs += len;
+    }
+
+private:
+    Data_t &_data;
+    char * ofs;
+};
+
+
+
+class Demarshaller_t {
+public:
+    Demarshaller_t(Data_t &data) :
+        _data(data),
+        ofs(data.begin())
+    {}
 
     template<typename T_t>
     T_t get() {
@@ -64,61 +124,17 @@ public:
         return val;
     }
 
-    template<typename T_t>
-    void put(T_t val) {
-        _put(val);
-    }
-
-    void reset() {
-        ofs = _data.begin();
-    }
-
-    size_t data_size() {
-        return ofs - _data.begin();
-    }
-
-    void align(size_t blockSIze) {
-    // todo...
-    }
-
 private:
-    void _put(uint64_t val) {
-        put_raw(htole64(val));
-    }
+    void _get(uint64_t &val) { val = le64toh(get_raw<uint64_t>()); }
+    void _get(uint32_t &val) { val = le32toh(get_raw<uint32_t>()); }
+    void _get(uint16_t &val) { val = le16toh(get_raw<uint16_t>()); }
+    void _get(uint8_t &val) { val = get_raw<uint8_t>(); }
 
-    void _put(uint32_t val) {
-        put_raw(htole32(val));
-    }
+    void _get(int64_t &val) { val = le64toh(get_raw<int64_t>()); }
+    void _get(int32_t &val) { val = le32toh(get_raw<int32_t>()); }
+    void _get(int16_t &val) { val = le16toh(get_raw<int16_t>()); }
+    void _get(int8_t &val) { val = get_raw<int8_t>(); }
 
-    void _put(uint16_t val) {
-        put_raw(htole16(val));
-    }
-
-    void _put(uint8_t val) {
-        put_raw(val);
-    }
-
-    void _put(const std::string &s) {
-        put<uint16_t>(static_cast<uint16_t>(s.size()));
-        put_raw(s.data(), s.size());
-    }
-
-
-    void _get(uint64_t &val) {
-        val = le64toh(get_raw<uint64_t>());
-    }
-
-    void _get(uint32_t &val) {
-        val = le32toh(get_raw<uint32_t>());
-    }
-
-    void _get(uint16_t &val) {
-        val = le16toh(get_raw<uint16_t>());
-    }
-
-    void _get(uint8_t &val) {
-        val = get_raw<uint8_t>();
-    }
 
     void _get(std::string &s) {
         uint16_t sz = get<uint16_t>();
@@ -139,26 +155,6 @@ private:
         return rv;
     }
 
-    template<typename T_t>
-    void put_raw(const T_t &val) {
-        put_raw(&val, sizeof(T_t));
-    }
-
-    template<typename T_t>
-    void put_raw(const T_t *_ptr, size_t len) {
-        const char *ptr = reinterpret_cast<const char *>(_ptr);
-        if (ofs + len > _data.end()) {
-            size_t newLen = (ofs + len) - _data.begin();
-            size_t idx = ofs - _data.begin();
-            std::cout << "idx " << idx << std::endl;
-            //_data.resize(newLen + newLen * 0.2);
-            _data.resize(newLen);
-            ofs = _data.begin() + idx;
-        }
-        memcpy(ofs, ptr, len);
-        ofs += len;
-    }
-
     void check(size_t len) {
         if (ofs + len > _data.end()) {
             raise<errcode::BOUNDS>("out of bounds");
@@ -166,28 +162,41 @@ private:
     }
 
 private:
-    Array_t<char> _data;
+    Data_t &_data;
     char * ofs;
 };
+
+template<typename T_t>
+Marshaller_t & operator<<(Marshaller_t &m, T_t val) {
+    m.put(val);
+    return m;
+}
+
+template<typename T_t>
+Demarshaller_t & operator>>(Demarshaller_t &d, T_t &val) {
+    val = d.get<T_t>();
+    return d;
+}
 
 }
 
 #if 0
 int main() {
     try {
-        s28::Archive_t ar(1);
-        ar.put<uint32_t>(7);
-        ar.put<uint32_t>(8);
-        ar.put<uint32_t>(9);
-        ar.put<uint32_t>(10);
+        s28::Data_t data(1);
+        s28::Marshaller_t m(data);
+        m << 1 << 2 << 3 << 4 << "ahojahojahojxxxxxxxxxxxxxxxxxxxxxxxxxxxx.";
+        int32_t a[5];
 
-        ar.reset();
+        s28::Demarshaller_t d(data);
+        std::string s;
+        d >> a[0] >> a[1] >> a[2] >> a[3] >> s;
 
-        std::cout << ar.get<uint32_t>() << std::endl;
-        std::cout << ar.get<uint32_t>() << std::endl;
-        std::cout << ar.get<uint32_t>() << std::endl;
-        std::cout << ar.get<uint32_t>() << std::endl;
-        std::cout << ar.get<uint32_t>() << std::endl;
+        std::cout << a[0] << std::endl;
+        std::cout << a[1] << std::endl;
+        std::cout << a[2] << std::endl;
+        std::cout << a[3] << std::endl;
+        std::cout << s << std::endl;
     } catch(const std::exception &e) {
         std::cout << "err: " << e.what() << std::endl;
     }
