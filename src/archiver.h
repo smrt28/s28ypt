@@ -1,5 +1,5 @@
-#ifndef S28_SERIALIZER_H
-#define S28_SERIALIZER_H
+#ifndef S28_ARCHIVER_H
+#define S28_ARCHIVER_H
 
 #include <string.h>
 #include <stdint.h>
