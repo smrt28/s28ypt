@@ -27,9 +27,11 @@ void * safe_malloc(size_t size) {
 void safe_free(void *p)  {
     size_t *s = (size_t *)p - 1;
 
-    memset(s, 0, *s);
+    size_t sz = *s;
 
-    if (munlock(s, *s) != 0) {
+    memset(s, 0, sz);
+
+    if (munlock(s, sz) != 0) {
         std::cerr << "err: munlock failed" << std::endl;
     }
     free(s);
