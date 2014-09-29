@@ -15,6 +15,7 @@ namespace errc {
     static const int MEMORY = 1;
     static const int IO = 2;
     static const int MARSHAL = 3;
+	static const int INTERNAL = 4;
 }
 
 namespace errcode {
@@ -30,6 +31,9 @@ namespace errcode {
 
     // MARSHAL category
     typedef ErrorCode_t<errc::MARSHAL, 301> BOUNDS;
+
+	typedef ErrorCode_t<errc::INTERNAL, 401> IMPOSSIBLE;
+	typedef ErrorCode_t<errc::INTERNAL, 402> INVALID_MAGIC;
 }
 
 }

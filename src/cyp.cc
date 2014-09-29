@@ -28,6 +28,7 @@
 #include "cbc.h"
 #include "aes.h"
 #include "archiver.h"
+#include "error.h"
 static const int MASTER_KEY_SIZE = 32;
 
 
@@ -70,33 +71,87 @@ private:
 
 
 template<bool direction, typename IO_t, typename Cipher_t, typename Context_t>
-class handle_header_t {};
+class crypt_control_t {};
 
 
 template<typename IO_t, typename Cipher_t, typename Context_t>
-class handle_header_t<true, IO_t, Cipher_t, Context_t> {
+class crypt_control_t<true, IO_t, Cipher_t, Context_t> {
 public:
-    static void handle(Cipher_t &cipher, Context_t &ctx, IO_t &in, IO_t &out) {
+    uint64_t filesize;
+    void handle(Cipher_t &cipher,
+            Context_t &ctx,
+            IO_t &in,
+            IO_t &out) 
+    {
         char seed[Cipher_t::BLOCK_SIZE];
-        char seedout[Cipher_t::BLOCK_SIZE];
+        char buf[Cipher_t::BLOCK_SIZE];
         s28::fill_random(seed);
-        cipher.process(seed, seedout, ctx);
-        out.write(seedout, Cipher_t::BLOCK_SIZE);
+        cipher.process(seed, buf, ctx);
+        out.write(buf, Cipher_t::BLOCK_SIZE);
+
+        s28::Data_t header(Cipher_t::BLOCK_SIZE);
+        header.zero();
+        s28::Marshaller_t m(header);
+        filesize = in.size();
+        m << filesize;
+        m << uint32_t(0x0A280B28);
+        size_t ds = m.data_size();
+
+        if (ds > Cipher_t::BLOCK_SIZE) {
+            s28::raise<s28::errcode::IMPOSSIBLE>("header doesn't fit block");
+        }
+
+        cipher.process(header.begin(), buf, ctx);
+        out.write(buf, Cipher_t::BLOCK_SIZE);
     }
+
+    void write(IO_t &io, void *buf, size_t count) {
+        io.write(buf, count);
+    }
+
 };
 
 template<typename IO_t, typename Cipher_t, typename Context_t>
-class handle_header_t<false, IO_t, Cipher_t, Context_t> {
+class crypt_control_t<false, IO_t, Cipher_t, Context_t> {
 public:
-    static void handle(Cipher_t &cipher, Context_t &ctx, IO_t &in, IO_t &out) {
-        char seed[s28::AES_t::BLOCK_SIZE];
+    uint64_t filesize;
+    uint64_t rem;
+    void handle(Cipher_t &cipher,
+            Context_t &ctx,
+            IO_t &in,
+            IO_t &/*out*/) 
+    {
+        char buf[s28::AES_t::BLOCK_SIZE];
         char tmp[s28::AES_t::BLOCK_SIZE];
-        in.read(seed, s28::AES_t::BLOCK_SIZE);
-        cipher.process(seed, tmp, ctx);
+        
+        in.read(buf, s28::AES_t::BLOCK_SIZE);
+        cipher.process(buf, tmp, ctx);
+
+        s28::Data_t header(Cipher_t::BLOCK_SIZE);
+        in.read(buf, s28::AES_t::BLOCK_SIZE);
+        cipher.process(buf, header.begin(), ctx);
+
+        s28::Demarshaller_t dm(header);
+        dm >> filesize;
+        uint32_t magic;
+        dm >> magic;
+        if (magic != 0x0A280B28) {
+            s28::raise<s28::errcode::INVALID_MAGIC>("invalid password"
+                    " or not s28ypted");
+        }
+        rem = filesize;
+    }
+
+    void write(IO_t &io, void *buf, size_t count) {
+        if (rem >= count) {
+            rem -= count;
+            io.write(buf, count);
+            return;
+        }
+        io.write(buf, rem);
+        rem = 0;
     }
 };
-
-
 
 
 template<bool direction>
@@ -114,9 +169,12 @@ void process_file(s28::AES_t &_aes,
     s28::fill_zero(buf);
     s28::fill_zero(obuf);
 
+
     Context_t ctx;
-    handle_header_t<direction, IO_t, Cipher_t, Context_t>::
-        handle(aes, ctx, fdin, fdout);
+    crypt_control_t<direction, IO_t, Cipher_t, Context_t> ctl;
+
+    ctl.handle(aes, ctx, fdin, fdout);
+
 
 	for (;;) {
 		ssize_t rd = fdin.read(buf, sizeof(buf));
@@ -131,7 +189,7 @@ void process_file(s28::AES_t &_aes,
 			in += s28::AES_t::BLOCK_SIZE;
 			out += s28::AES_t::BLOCK_SIZE;
 		}
-		fdout.write(obuf, out - obuf);
+		ctl.write(fdout, obuf, out - obuf);
 	}
 }
 
@@ -160,6 +218,11 @@ void process_file(s28::AES_t &_aes,
 
 
 int _main(int argc, char **argv) {
+    if (argc != 4) {
+        std::cerr << "err: args" << std::endl;
+        return -1;
+    }
+    
     char *ptmp = getpass("Enter password:");
     size_t sz = strlen(ptmp);
     s28::SafePtr_t<char, 128 + 1> rawpass;
@@ -174,15 +237,23 @@ int _main(int argc, char **argv) {
         memset(ptmp, 0, sz);
         return 1;
     }
+
     memset(ptmp, 0, sz);
 
     Password_t pass;
     pass.init(rawpass.get());
-
+   
     s28::AES_t aes;
     aes.init(pass.get());
-	process_file<true>(aes, "/etc/passwd", "/tmp/passwd.s28");
-	process_file<false>(aes, "/tmp/passwd.s28", "/tmp/passwd.out");
+
+    if (std::string(argv[1]) == "-e") {
+        process_file<true>(aes, argv[2], argv[3]);
+    } else if (std::string(argv[1]) == "-d") {
+        process_file<false>(aes, argv[2], argv[3]);
+    } else {
+        std::cerr << "err: args" << std::endl;
+    }
+
 	return 0;
 }
 
