@@ -164,8 +164,8 @@ void process_file(s28::AES_t &_aes,
     Cipher_t aes(_aes);
     typedef s28::FD_t IO_t;
 
-	char buf[256];
-	char obuf[256];
+	char buf[4096];
+	char obuf[4096];
     s28::fill_zero(buf);
     s28::fill_zero(obuf);
 
@@ -222,6 +222,15 @@ int _main(int argc, char **argv) {
         std::cerr << "err: args" << std::endl;
         return -1;
     }
+    bool encrypt;
+    if (std::string(argv[1]) == "-e") {
+        encrypt = true;
+    } else if (std::string(argv[1]) == "-d") {
+        encrypt = false;
+    } else {
+        std::cerr << "err: args" << std::endl;
+        return 1;
+    }
     
     char *ptmp = getpass("Enter password:");
     size_t sz = strlen(ptmp);
@@ -229,16 +238,18 @@ int _main(int argc, char **argv) {
     strcpy(rawpass.get(), ptmp);
     memset(ptmp, 0, sz);
 
-    ptmp = getpass("Re-enter password:");
+    if (encrypt) {
+        ptmp = getpass("Re-enter password:");
 
-    if (strcmp(ptmp, rawpass.get()) != 0) {
-        std::cout << "err: doesn't match" << std::endl;
-        size_t sz = strlen(ptmp);
+        if (strcmp(ptmp, rawpass.get()) != 0) {
+            std::cout << "err: doesn't match" << std::endl;
+            size_t sz = strlen(ptmp);
+            memset(ptmp, 0, sz);
+            return 1;
+        }
+
         memset(ptmp, 0, sz);
-        return 1;
     }
-
-    memset(ptmp, 0, sz);
 
     Password_t pass;
     pass.init(rawpass.get());
@@ -246,14 +257,11 @@ int _main(int argc, char **argv) {
     s28::AES_t aes;
     aes.init(pass.get());
 
-    if (std::string(argv[1]) == "-e") {
+    if (encrypt) {
         process_file<true>(aes, argv[2], argv[3]);
-    } else if (std::string(argv[1]) == "-d") {
-        process_file<false>(aes, argv[2], argv[3]);
     } else {
-        std::cerr << "err: args" << std::endl;
+        process_file<false>(aes, argv[2], argv[3]);
     }
-
 	return 0;
 }
 
