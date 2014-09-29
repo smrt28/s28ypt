@@ -70,26 +70,26 @@ private:
 };
 
 
-template<bool direction, typename IO_t, typename Cipher_t, typename Context_t>
+template<bool direction, typename IO_t, typename Cypher_t, typename Context_t>
 class crypt_control_t {};
 
 
-template<typename IO_t, typename Cipher_t, typename Context_t>
-class crypt_control_t<true, IO_t, Cipher_t, Context_t> {
+template<typename IO_t, typename Cypher_t, typename Context_t>
+class crypt_control_t<true, IO_t, Cypher_t, Context_t> {
 public:
     uint64_t filesize;
-    void handle(Cipher_t &cipher,
+    void handle(Cypher_t &cipher,
             Context_t &ctx,
             IO_t &in,
             IO_t &out) 
     {
-        char seed[Cipher_t::BLOCK_SIZE];
-        char buf[Cipher_t::BLOCK_SIZE];
+        char seed[Cypher_t::BLOCK_SIZE];
+        char buf[Cypher_t::BLOCK_SIZE];
         s28::fill_random(seed);
         cipher.process(seed, buf, ctx);
-        out.write(buf, Cipher_t::BLOCK_SIZE);
+        out.write(buf, Cypher_t::BLOCK_SIZE);
 
-        s28::Data_t header(Cipher_t::BLOCK_SIZE);
+        s28::Data_t header(Cypher_t::BLOCK_SIZE);
         header.zero();
         s28::Marshaller_t m(header);
         filesize = in.size();
@@ -97,12 +97,12 @@ public:
         m << uint32_t(0x0A280B28);
         size_t ds = m.data_size();
 
-        if (ds > Cipher_t::BLOCK_SIZE) {
+        if (ds > Cypher_t::BLOCK_SIZE) {
             s28::raise<s28::errcode::IMPOSSIBLE>("header doesn't fit block");
         }
 
         cipher.process(header.begin(), buf, ctx);
-        out.write(buf, Cipher_t::BLOCK_SIZE);
+        out.write(buf, Cypher_t::BLOCK_SIZE);
     }
 
     void write(IO_t &io, void *buf, size_t count) {
@@ -111,12 +111,12 @@ public:
 
 };
 
-template<typename IO_t, typename Cipher_t, typename Context_t>
-class crypt_control_t<false, IO_t, Cipher_t, Context_t> {
+template<typename IO_t, typename Cypher_t, typename Context_t>
+class crypt_control_t<false, IO_t, Cypher_t, Context_t> {
 public:
     uint64_t filesize;
     uint64_t rem;
-    void handle(Cipher_t &cipher,
+    void handle(Cypher_t &cipher,
             Context_t &ctx,
             IO_t &in,
             IO_t &/*out*/) 
@@ -127,7 +127,7 @@ public:
         in.read(buf, s28::AES_t::BLOCK_SIZE);
         cipher.process(buf, tmp, ctx);
 
-        s28::Data_t header(Cipher_t::BLOCK_SIZE);
+        s28::Data_t header(Cypher_t::BLOCK_SIZE);
         in.read(buf, s28::AES_t::BLOCK_SIZE);
         cipher.process(buf, header.begin(), ctx);
 
@@ -159,9 +159,9 @@ void process_file(s28::AES_t &_aes,
         s28::FD_t &fdin,
         s28::FD_t &fdout)
 {
-    typedef s28::CBC_t<s28::AES_t, direction> Cipher_t;
-    typedef typename Cipher_t::Context_t Context_t;
-    Cipher_t aes(_aes);
+    typedef s28::CBC_t<s28::AES_t, direction> Cypher_t;
+    typedef typename Cypher_t::Context_t Context_t;
+    Cypher_t aes(_aes);
     typedef s28::FD_t IO_t;
 
 	char buf[4096];
@@ -171,7 +171,7 @@ void process_file(s28::AES_t &_aes,
 
 
     Context_t ctx;
-    crypt_control_t<direction, IO_t, Cipher_t, Context_t> ctl;
+    crypt_control_t<direction, IO_t, Cypher_t, Context_t> ctl;
 
     ctl.handle(aes, ctx, fdin, fdout);
 
@@ -200,8 +200,8 @@ void process_file(s28::AES_t &_aes,
         const std::string &inFile,
         const std::string &outFile)
 {
-    typedef s28::CBC_t<s28::AES_t, direction> Cipher_t;
-    Cipher_t aes(_aes);
+    typedef s28::CBC_t<s28::AES_t, direction> Cypher_t;
+    Cypher_t aes(_aes);
 
     typedef s28::FD_t IO_t;
 
