@@ -7,50 +7,11 @@
 
 #include "portable-endian.h"
 #include "error.h"
+#include "array.h"
 
 namespace s28 {
 
-template<typename Type_t>
-class Array_t {
-public:
-    typedef Type_t value_type;
-
-    Array_t(size_t len = 16) :
-        _size(len),
-        _data(new Type_t[len])
-    {}
-
-    virtual ~Array_t() {
-        delete [] _data;
-    }
-
-    size_t size() const {
-        return _size;
-    }
-
-    void resize(size_t size) {
-        if (size <= _size) return;
-        Type_t * newData = new Type_t[size];
-        memcpy(newData, _data, sizeof(Type_t[_size]));
-        delete [] _data;
-        _data = newData;
-        _size = size;
-    }
-
-    void zero() {
-        memset(_data, 0, _size);
-    }
-
-    Type_t * begin() { return _data; }
-    Type_t * end() { return _data + _size; }
-
-private:
-    size_t _size;
-    Type_t *_data;
-};
-
-
-typedef Array_t<char> Data_t;
+typedef MutableArray_t<char> Data_t;
 
 class Marshaller_t {
 public:
@@ -62,6 +23,11 @@ public:
     template<typename T_t>
     void put(T_t val) {
         _put(val);
+    }
+
+    template<typename T_t, size_t SIZE>
+    void put(const Array_t<T_t, SIZE> &a) {
+        _put_array(a.begin(), a.end());
     }
 
     size_t data_size() {
@@ -79,6 +45,11 @@ private:
     void _put(int16_t val) { put_raw(htole16(val)); }
     void _put(int8_t val) { put_raw(val); }
 
+    template<typename It_t>
+    void _put_array(It_t it, It_t eit) {
+        for (;it != eit;++it)
+            _put(*it);
+    }
 
     void _put(const std::string &s) {
         put<uint16_t>(static_cast<uint16_t>(s.size()));
@@ -177,6 +148,26 @@ Demarshaller_t & operator>>(Demarshaller_t &d, T_t &val) {
     val = d.get<T_t>();
     return d;
 }
+
+namespace ar {
+
+template<typename Type_t, int n>
+class Variable_t {
+public:
+    operator Type_t() { return value; }
+    Type_t value;
+};
+
+
+class Struct_t :
+    public Variable_t<uint32_t, 0>,
+    public Variable_t<uint32_t, 1>
+{
+
+};
+
+
+} // namespace ar
 
 }
 
