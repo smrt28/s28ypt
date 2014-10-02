@@ -7,51 +7,18 @@
 
 #include "portable-endian.h"
 #include "error.h"
+#include "array.h"
 
 namespace s28 {
 
+namespace ar {
 template<typename Type_t>
-class Array_t {
-public:
-    typedef Type_t value_type;
-
-    Array_t(size_t len = 16) :
-        _size(len),
-        _data(new Type_t[len])
-    {}
-
-    virtual ~Array_t() {
-        delete [] _data;
-    }
-
-    size_t size() const {
-        return _size;
-    }
-
-    void resize(size_t size) {
-        if (size <= _size) return;
-        Type_t * newData = new Type_t[size];
-        memcpy(newData, _data, sizeof(Type_t[_size]));
-        delete [] _data;
-        _data = newData;
-        _size = size;
-    }
-
-    void zero() {
-        memset(_data, 0, _size);
-    }
-
-    Type_t * begin() { return _data; }
-    Type_t * end() { return _data + _size; }
-
-private:
-    size_t _size;
-    Type_t *_data;
+class Variable_t {
 };
 
+};
 
-typedef Array_t<char> Data_t;
-
+template<typename Data_t>
 class Marshaller_t {
 public:
     Marshaller_t(Data_t &data) :
@@ -64,9 +31,21 @@ public:
         _put(val);
     }
 
+    template<typename T_t, size_t SIZE>
+    void put(const Array_t<T_t, SIZE> &a) {
+        _put_array(a.begin(), a.end());
+    }
+
+    template<typename T_t, size_t SIZE>
+    void put(const SafeArray_t<T_t, SIZE> &a) {
+        _put_array(a.begin(), a.end());
+    }
+
     size_t data_size() {
         return ofs - _data.begin();
     }
+
+
 
 private:
     void _put(uint64_t val) { put_raw(htole64(val)); }
@@ -74,11 +53,18 @@ private:
     void _put(uint16_t val) { put_raw(htole16(val)); }
     void _put(uint8_t val) { put_raw(val); }
 
-    void _put(int64_t val) { put_raw(htole64(val)); }
-    void _put(int32_t val) { put_raw(htole32(val)); }
-    void _put(int16_t val) { put_raw(htole16(val)); }
+    void _put(char val) { put_raw(val); }
     void _put(int8_t val) { put_raw(val); }
+    void _put(int16_t val) { put_raw(htole16(val)); }
+    void _put(int32_t val) { put_raw(htole32(val)); }
+    void _put(int64_t val) { put_raw(htole64(val)); }
 
+    template<typename It_t>
+    void _put_array(It_t it, It_t eit) {
+        for (;it != eit;++it) {
+            _put(*it);
+        }
+    }
 
     void _put(const std::string &s) {
         put<uint16_t>(static_cast<uint16_t>(s.size()));
@@ -110,6 +96,7 @@ private:
 
 
 
+template<typename Data_t>
 class Demarshaller_t {
 public:
     Demarshaller_t(Data_t &data) :
@@ -124,6 +111,24 @@ public:
         return val;
     }
 
+    template<typename T_t, size_t SIZE>
+    void get(Array_t<T_t, SIZE> &a) {
+        get_raw(a.get(), SIZE);
+    }
+
+    template<typename T_t, size_t SIZE>
+    void get(SafeArray_t<T_t, SIZE> &a) {
+        get_raw(a.get(), SIZE);
+    }
+
+
+    const char * offset() const {
+        return ofs;
+    }
+
+    const char * end() const {
+        return _data.end();
+    }
 private:
     void _get(uint64_t &val) { val = le64toh(get_raw<uint64_t>()); }
     void _get(uint32_t &val) { val = le32toh(get_raw<uint32_t>()); }
@@ -134,6 +139,7 @@ private:
     void _get(int32_t &val) { val = le32toh(get_raw<int32_t>()); }
     void _get(int16_t &val) { val = le16toh(get_raw<int16_t>()); }
     void _get(int8_t &val) { val = get_raw<int8_t>(); }
+    void _get(char &val) { val = get_raw<char>(); }
 
 
     void _get(std::string &s) {
@@ -155,6 +161,13 @@ private:
         return rv;
     }
 
+    void get_raw(void *ptr, size_t len) {
+        check(len);
+        memcpy(ptr, ofs, len);
+        ofs += len;
+    }
+
+
     void check(size_t len) {
         if (ofs + len > _data.end()) {
             raise<errcode::BOUNDS>("out of bounds");
@@ -166,42 +179,20 @@ private:
     char * ofs;
 };
 
-template<typename T_t>
-Marshaller_t & operator<<(Marshaller_t &m, T_t val) {
+
+
+template<typename T_t, typename Data_t>
+Marshaller_t<Data_t> & operator<<(Marshaller_t<Data_t> &m, T_t val) {
     m.put(val);
     return m;
 }
 
-template<typename T_t>
-Demarshaller_t & operator>>(Demarshaller_t &d, T_t &val) {
-    val = d.get<T_t>();
+template<typename T_t, typename Data_t>
+Demarshaller_t<Data_t> & operator>>(Demarshaller_t<Data_t> &d, T_t &val) {
+    val = d. template get<T_t>();
     return d;
 }
 
 }
-
-#if 0
-int main() {
-    try {
-        s28::Data_t data(1);
-        s28::Marshaller_t m(data);
-        m << 1 << 2 << 3 << 4 << "ahojahojahojxxxxxxxxxxxxxxxxxxxxxxxxxxxx.";
-        int32_t a[5];
-
-        s28::Demarshaller_t d(data);
-        std::string s;
-        d >> a[0] >> a[1] >> a[2] >> a[3] >> s;
-
-        std::cout << a[0] << std::endl;
-        std::cout << a[1] << std::endl;
-        std::cout << a[2] << std::endl;
-        std::cout << a[3] << std::endl;
-        std::cout << s << std::endl;
-    } catch(const std::exception &e) {
-        std::cout << "err: " << e.what() << std::endl;
-    }
-    return 0;
-}
-#endif
 
 #endif

@@ -56,7 +56,7 @@ private:
 
 
 template<typename Code_t>
-void raise(const std::string &msg) {
+void raise(const std::string &msg = std::string()) {
     throw Error_t<Code_t>(msg);
 }
 

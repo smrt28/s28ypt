@@ -1,6 +1,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <iostream>
+#include <fcntl.h>
 
 #include "file.h"
 #include "error.h"
@@ -69,6 +70,38 @@ off_t FD_t::size() {
     return st.st_size;
 }
 
+off_t FD_t::seek(off_t offset, Whence_t whence) {
+    check_fd(_fd);
+    off_t rv;
+    int w;
+    switch(whence) {
+        case SET_TO:
+            w = SEEK_SET;
+            break;
+        case FROM_CUR:
+            w = SEEK_CUR;
+            break;
+        case FROM_END:
+            w = SEEK_END;
+            break;
+        default:
+            raise<errcode::SEEK>("unknown whence");
+    }
+    if ((rv = lseek(_fd, offset, w)) == -1) {
+        raise<errcode::SEEK>("lseek failed");
+    }
+    return rv;
+}
+
+void FileOpener_t::forRead(const std::string &fname, FD_t &fd) {
+	fd.set(open(fname.c_str(), O_RDONLY));
 
 }
 
+void FileOpener_t::forWrite(const std::string &fname, FD_t &fd) {
+	mode_t mode = S_IRUSR | S_IWUSR | O_TRUNC;
+    fd.set(open(fname.c_str(), O_WRONLY | O_CREAT, mode));
+}
+
+
+}

@@ -14,8 +14,7 @@ class AES_t {
 public:
     static const size_t BLOCK_SIZE = AES_BLOCK_SIZE;
     static const size_t KEY_SIZE = 32;
-
-    void init(const char *key) {        
+    void init(const char *key) {
         AES_set_encrypt_key((unsigned char *)key, 256, &keys->ekey);
         AES_set_decrypt_key((unsigned char *)key, 256, &keys->dkey);
     }
@@ -25,16 +24,12 @@ public:
     }
 
     inline void decrypt(char *in, char *out) {
-        AES_decrypt((const unsigned char *)in, (unsigned char *)out, &keys->dkey);
+        AES_decrypt((const unsigned char *)in,
+                (unsigned char *)out, &keys->dkey);
     }
 
 private:
     SafePtr_t<Secret_t> keys;
 };
-
-
-
 }
-
-
 #endif

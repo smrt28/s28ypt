@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <sys/mman.h>
 
+#include <vector>
 #include <string>
 #include <exception>
 #include <iostream>
@@ -29,152 +30,25 @@
 #include "aes.h"
 #include "archiver.h"
 #include "error.h"
-static const int MASTER_KEY_SIZE = 32;
+#include "sha256.h"
+#include "header28.h"
+#include "checks.h"
+#include "keyfactory.h"
 
 
-class Password_t {
-public:
-    Password_t() {}
-
-    const char * get() const {
-        return (char *)master.get();
-    }
-
-    void init(const char *pass) {
-        s28::SafePtr_t<unsigned char, SHA256_DIGEST_LENGTH> rawKey;
-        s28::SafePtr_t<SHA256_CTX> ctx;
-        unsigned char *hash = rawKey.get();
-        size_t len = strlen(pass);
-        SHA256_Init(ctx.get());
-        SHA256_Update(ctx.get(), pass, len);
-        SHA256_Final(hash, ctx.get());
-
-        for (int i = 0; i < 3000000; ++i) {
-            SHA256_Init(ctx.get());
-            SHA256_Update(ctx.get(), hash, SHA256_DIGEST_LENGTH);
-            SHA256_Final(hash, ctx.get());
-        }
-
-        SHA256_Init(ctx.get());
-        SHA256_Update(ctx.get(), pass, len);
-        SHA256_Update(ctx.get(), hash, SHA256_DIGEST_LENGTH);
-        SHA256_Update(ctx.get(), pass, len);
-        SHA256_Final(hash, ctx.get());
-        master.zero();
-        memcpy(master.get(), rawKey.get(),
-                std::min(SHA256_DIGEST_LENGTH, MASTER_KEY_SIZE));
-    }
-
-private:
-    s28::SafePtr_t<unsigned char, MASTER_KEY_SIZE> master;
-};
-
-
-template<bool direction, typename IO_t, typename Cypher_t, typename Context_t>
-class crypt_control_t {};
-
-
-template<typename IO_t, typename Cypher_t, typename Context_t>
-class crypt_control_t<true, IO_t, Cypher_t, Context_t> {
-public:
-    uint64_t filesize;
-    void handle(Cypher_t &cipher,
-            Context_t &ctx,
-            IO_t &in,
-            IO_t &out) 
-    {
-        char seed[Cypher_t::BLOCK_SIZE];
-        char buf[Cypher_t::BLOCK_SIZE];
-        s28::fill_random(seed);
-        cipher.process(seed, buf, ctx);
-        out.write(buf, Cypher_t::BLOCK_SIZE);
-
-        s28::Data_t header(Cypher_t::BLOCK_SIZE);
-        header.zero();
-        s28::Marshaller_t m(header);
-        filesize = in.size();
-        m << filesize;
-        m << uint32_t(0x0A280B28);
-        size_t ds = m.data_size();
-
-        if (ds > Cypher_t::BLOCK_SIZE) {
-            s28::raise<s28::errcode::IMPOSSIBLE>("header doesn't fit block");
-        }
-
-        cipher.process(header.begin(), buf, ctx);
-        out.write(buf, Cypher_t::BLOCK_SIZE);
-    }
-
-    void write(IO_t &io, void *buf, size_t count) {
-        io.write(buf, count);
-    }
-
-};
-
-template<typename IO_t, typename Cypher_t, typename Context_t>
-class crypt_control_t<false, IO_t, Cypher_t, Context_t> {
-public:
-    uint64_t filesize;
-    uint64_t rem;
-    void handle(Cypher_t &cipher,
-            Context_t &ctx,
-            IO_t &in,
-            IO_t &/*out*/) 
-    {
-        char buf[s28::AES_t::BLOCK_SIZE];
-        char tmp[s28::AES_t::BLOCK_SIZE];
-        
-        in.read(buf, s28::AES_t::BLOCK_SIZE);
-        cipher.process(buf, tmp, ctx);
-
-        s28::Data_t header(Cypher_t::BLOCK_SIZE);
-        in.read(buf, s28::AES_t::BLOCK_SIZE);
-        cipher.process(buf, header.begin(), ctx);
-
-        s28::Demarshaller_t dm(header);
-        dm >> filesize;
-        uint32_t magic;
-        dm >> magic;
-        if (magic != 0x0A280B28) {
-            s28::raise<s28::errcode::INVALID_MAGIC>("invalid password"
-                    " or not s28ypted");
-        }
-        rem = filesize;
-    }
-
-    void write(IO_t &io, void *buf, size_t count) {
-        if (rem >= count) {
-            rem -= count;
-            io.write(buf, count);
-            return;
-        }
-        io.write(buf, rem);
-        rem = 0;
-    }
-};
-
-
-template<bool direction>
-void process_file(s28::AES_t &_aes,
-        s28::FD_t &fdin,
-        s28::FD_t &fdout)
+template<typename Cypher_t, typename IN_t, typename OUT_t, bool direction>
+void process_file(Cypher_t &aes,
+        IN_t &fdin,
+        OUT_t &fdout)
 {
-    typedef s28::CBC_t<s28::AES_t, direction> Cypher_t;
     typedef typename Cypher_t::Context_t Context_t;
-    Cypher_t aes(_aes);
-    typedef s28::FD_t IO_t;
 
 	char buf[4096];
 	char obuf[4096];
     s28::fill_zero(buf);
     s28::fill_zero(obuf);
 
-
     Context_t ctx;
-    crypt_control_t<direction, IO_t, Cypher_t, Context_t> ctl;
-
-    ctl.handle(aes, ctx, fdin, fdout);
-
 
 	for (;;) {
 		ssize_t rd = fdin.read(buf, sizeof(buf));
@@ -189,57 +63,308 @@ void process_file(s28::AES_t &_aes,
 			in += s28::AES_t::BLOCK_SIZE;
 			out += s28::AES_t::BLOCK_SIZE;
 		}
-		ctl.write(fdout, obuf, out - obuf);
+		fdout.write(obuf, out - obuf);
 	}
 }
 
 
+template<typename Digest_t, typename IO_t, bool direction>
+class MAC_t {
+public:
+    MAC_t(Digest_t &digest, IO_t &io, ssize_t fsize = -1) :
+        digest(digest),
+        io(io),
+        fsize(fsize)
+    {}
 
-template<bool direction>
-void process_file(s28::AES_t &_aes,
+    ssize_t read(void *buf, size_t len) {
+        ssize_t rv = io.read(buf, len);
+        if (direction && rv > 0) {
+            digest.update(buf, rv);
+        }
+        return rv;
+    }
+
+    ssize_t write(void *buf, size_t len) {
+        if (fsize == 0) return 0;
+        if (fsize > 0) {
+            if (ssize_t(len) > fsize) len = fsize;
+            fsize -= len;
+        }
+        if (!direction) digest.update(buf, len);
+        return io.write(buf, len);
+    }
+
+private:
+    Digest_t &digest;
+    IO_t &io;
+    ssize_t fsize;
+};
+
+
+namespace aux {
+template<typename Cypher_t, typename Input_t, typename Output_t>
+void encrypt(Cypher_t &cyp, Input_t &in, Output_t &out) {
+    process_file<Cypher_t, Input_t, Output_t, true>(cyp, in, out);
+}
+
+template<typename Cypher_t, typename Input_t, typename Output_t>
+void decrypt(Cypher_t &cyp, Input_t &in, Output_t &out) {
+    process_file<Cypher_t, Input_t, Output_t, false>(cyp, in, out);
+}
+}
+
+
+template<typename BlockCypher_t, typename Ptr_t>
+void randomize_with_cypher(BlockCypher_t &bc, Ptr_t &ptr) {
+    ptr.random();
+
+    typedef s28::SafeArray_t<char, BlockCypher_t::BLOCK_SIZE> Block_t;
+    Block_t block1;
+    Block_t block2;
+    block1.random();
+
+    for(typename Ptr_t::iterator it = ptr.begin(), eit=ptr.end();;)
+    {
+        bc.encrypt(block1, block2);
+        block1.swap(block2);
+
+        for(typename Block_t::iterator
+                bit = block1.begin(), beit = block1.end();
+                bit != beit; ++bit)
+        {
+            *it ^= *bit;
+            ++it;
+            if (it == eit) return;
+        }
+    }
+}
+
+template<typename Cypher_t>
+void process_mem(Cypher_t &cyp, char * in, char * out, size_t size) {
+    typename Cypher_t::Context_t ctx;
+    while(size) {
+        if (size < Cypher_t::BLOCK_SIZE) return;
+        cyp.process(in, out, ctx);
+        in += Cypher_t::BLOCK_SIZE;
+        out += Cypher_t::BLOCK_SIZE;
+        size -= Cypher_t::BLOCK_SIZE;
+    }
+}
+
+
+template<template<typename, bool> class _Mode_t,
+    typename _Cypher_t,
+    typename _Digest_t>
+struct S28Config_t {
+public:
+
+    typedef _Digest_t Digest_t;
+    typedef _Cypher_t BlockCypher_t;
+    typedef s28::SafePtr_t<char, BlockCypher_t::KEY_SIZE> DerivedKey_t;
+
+    template<bool direction>
+    struct def_t {
+        typedef _Mode_t<_Cypher_t, direction> Cypher_t;
+    };
+};
+
+typedef S28Config_t<s28::CBC_t, s28::AES_t, s28::sha256_t> E_t;
+
+template<bool direction, typename Opener_t, typename Cfg_t>
+void s28_file(const typename Cfg_t::DerivedKey_t &key,
         const std::string &inFile,
         const std::string &outFile)
 {
-    typedef s28::CBC_t<s28::AES_t, direction> Cypher_t;
-    Cypher_t aes(_aes);
+    static const size_t HEADER_SIZE = 256;
+    typedef s28::SafeArray_t<char, HEADER_SIZE> Header_t;
+
+    typedef typename Cfg_t::BlockCypher_t BlockCypher_t;
+    typedef typename Cfg_t::template def_t<direction>::Cypher_t Cypher_t;
+    typedef typename Cfg_t::Digest_t Digest_t;
+
+    typename Cfg_t::BlockCypher_t __aes;
+    __aes.init(key.get());
 
     typedef s28::FD_t IO_t;
 
-	s28::FD_t fdin;
-	s28::FD_t fdout;
+    IO_t fdin;
+	IO_t fdout;
 
-	mode_t mode = S_IRUSR | S_IWUSR;
-	fdin.set(open(inFile.c_str(), O_RDONLY));
-	fdout.set(open(outFile.c_str(), O_WRONLY | O_CREAT, mode));
+    Opener_t::forRead(inFile, fdin);
+    Opener_t::forWrite(outFile, fdout);
 
-    process_file<direction>(_aes, fdin, fdout);
+    if (direction) {
+        s28::SafeArray_t<char, BlockCypher_t::KEY_SIZE> master;
+        randomize_with_cypher(__aes, master);
+        BlockCypher_t masterblock;
+        masterblock.init(master.get());
+        Cypher_t cyp(masterblock);
+        Digest_t digest;
+        uint64_t fsize = fdin.size();
+        MAC_t<Digest_t, IO_t, direction> min(digest, fdin, fsize);
+        Header_t header;
+        header.zero();
+
+        fdout.write(header.get(), Header_t::SIZE);
+
+        aux::encrypt(cyp, min, fdout);
+
+        s28::Marshaller_t<Header_t> m(header);
+
+        s28::SafeArray_t<char, BlockCypher_t::BLOCK_SIZE> seed;
+        seed.random();
+
+        m.put(seed); // seed
+        m << uint16_t(0x1); // version
+        m << uint16_t(0x2828); // magic
+        m.put(master); // master key
+        m << fsize; // file size
+        s28::Array_t<char, Digest_t::DIGEST_LENGTH> hash;
+        digest.finalize(hash.get());
+        m.put(hash); // hash
+        Header_t headerEnc;
+        Cypher_t hcyp(__aes);
+        process_mem(hcyp, header.get(), headerEnc.get(), Header_t::SIZE);
+        fdout.seek(0);
+        fdout.write(headerEnc.get(), Header_t::SIZE);
+
+
+    } else {
+        Cypher_t cyp(__aes);
+        Header_t encHeader;
+        encHeader.zero();
+        fdin.read(encHeader.get(), Header_t::SIZE);
+        Header_t header;
+        process_mem(cyp, encHeader.get(), header.get(), Header_t::SIZE);
+
+        s28::Demarshaller_t<Header_t> d(header);
+        s28::SafeArray_t<char, BlockCypher_t::BLOCK_SIZE> seed;
+        s28::SafeArray_t<char, BlockCypher_t::KEY_SIZE> master;
+        s28::Array_t<char, Digest_t::DIGEST_LENGTH> hash, hashres;
+        d.get(seed);
+        uint16_t tmp16;
+        d >> tmp16; // version
+        if (tmp16 != 1) {
+            s28::raise<s28::errcode::INVALID_VERSION>("version doesn't match");
+        }
+
+        d >> tmp16; // magic
+
+        if (tmp16 != 0x2828) {
+            s28::raise<s28::errcode::INVALID_MAGIC>("wrong magic");
+        }
+
+        d.get(master);
+        uint64_t fsize;
+        d >> fsize;
+        d.get(hash);
+
+        if (!s28::only_zeros(d.offset(), d.end())) {
+            s28::raise<s28::errcode::MALFORMED_HEADER>("wrong header padding");
+        }
+
+        Digest_t digest;
+        MAC_t<Digest_t, IO_t, direction> min(digest, fdout, fsize);
+        BlockCypher_t masterblock;
+        masterblock.init(master.get());
+        Cypher_t dcyp(masterblock);
+        aux::decrypt(dcyp, fdin, min);
+        digest.finalize(hashres.get());
+
+        if (!hash.cmp(hashres)) {
+            s28::raise<s28::errcode::INCONSISTENT>("broken data");
+        }
+    }
+}
+
+namespace aux {
+char * getpass(const char *msg) {
+    return ::getpass(msg);
+}
+
+}
+
+struct Params_t {
+    template<typename It_t>
+    Params_t(It_t it, It_t eit) : encrypt(true) {
+        char p = 0;
+        int eset = 0;
+        for(;it != eit;++it) {
+            std::string val = *it;
+            if (val == "-e") {
+                encrypt = true;
+                eset ++;
+                continue;
+            }
+            if (val == "-d") {
+                encrypt = false;
+                eset ++;
+                continue;
+            }
+            if (val == "-f") {
+                p = 'f';
+                continue;
+            }
+
+            if (p == 0) {
+                if (ifile.empty()) {
+                    ifile = *it;
+                    continue;
+                }
+                if (ofile.empty()) {
+                    ofile = *it;
+                    continue;
+                }
+                s28::raise<s28::errcode::ARGS>("args");
+            }
+
+            if (p == 'f') {
+                p = 0;
+                keyfiles.push_back(*it);
+            }
+        }
+
+        if (ifile.empty() || ofile.empty()
+                || eset != 1) {
+            s28::raise<s28::errcode::ARGS>("args");
+        }
+    }
+
+    std::string ifile;
+    std::string ofile;
+    std::vector<std::string> keyfiles;
+    bool encrypt;
+};
+
+
+template<typename KF_t, typename Opener_t, typename It_t>
+void add_key_files(KF_t &kf, It_t it, It_t eit, Opener_t) {
+    for (;it != eit;++it) {
+        s28::FD_t fd;
+        Opener_t::forRead(*it, fd);
+        kf.addKeyFile(fd);
+    }
 }
 
 
 
 int _main(int argc, char **argv) {
-    if (argc != 4) {
-        std::cerr << "err: args" << std::endl;
-        return -1;
-    }
-    bool encrypt;
-    if (std::string(argv[1]) == "-e") {
-        encrypt = true;
-    } else if (std::string(argv[1]) == "-d") {
-        encrypt = false;
-    } else {
-        std::cerr << "err: args" << std::endl;
-        return 1;
-    }
-    
-    char *ptmp = getpass("Enter password:");
+    typedef s28::AES_t Cypher_t;
+    typedef s28::sha256_t Digest_t;
+
+
+    Params_t params(argv + 1, argv + argc);
+
+
+    char *ptmp = aux::getpass("Enter password:");
     size_t sz = strlen(ptmp);
     s28::SafePtr_t<char, 128 + 1> rawpass;
     strcpy(rawpass.get(), ptmp);
     memset(ptmp, 0, sz);
 
-    if (encrypt) {
-        ptmp = getpass("Re-enter password:");
+    if (params.encrypt) {
+        ptmp = aux::getpass("Re-enter password:");
 
         if (strcmp(ptmp, rawpass.get()) != 0) {
             std::cout << "err: doesn't match" << std::endl;
@@ -251,16 +376,19 @@ int _main(int argc, char **argv) {
         memset(ptmp, 0, sz);
     }
 
-    Password_t pass;
+    s28::KeyFactory_t<Digest_t, Cypher_t> pass;
     pass.init(rawpass.get());
-   
-    s28::AES_t aes;
-    aes.init(pass.get());
 
-    if (encrypt) {
-        process_file<true>(aes, argv[2], argv[3]);
+    add_key_files(pass, params.keyfiles.begin(),
+            params.keyfiles.end(), s28::FileOpener_t());
+
+
+    if (params.encrypt) {
+        s28_file<true, s28::FileOpener_t, E_t>(pass.get(),
+                params.ifile, params.ofile);
     } else {
-        process_file<false>(aes, argv[2], argv[3]);
+        s28_file<false, s28::FileOpener_t, E_t>(pass.get(),
+                params.ifile, params.ofile);
     }
 	return 0;
 }
@@ -274,6 +402,7 @@ int main(int argc, char **argv) {
 		std::cerr << "err: " << e.what() << std::endl;
 		return 1;
 	}
+    std::cerr << "ok" << std::endl;
 	return 0;
 }
 

@@ -24,17 +24,19 @@ class ECHelper_t<false> {
 public:
     typedef decrypt_t Direction_t;
 };
-
 }
 
 
-template<typename Cipher_t, bool direction>
+template<typename Cypher_t, bool direction>
 class CBC_t {
 public:
-    static const size_t BLOCK_SIZE = Cipher_t::BLOCK_SIZE;
-    typedef char Block_t[BLOCK_SIZE];
+    static const size_t BLOCK_SIZE = Cypher_t::BLOCK_SIZE;
+    static const bool DIRECTION = direction;
+    typedef Cypher_t BlockCypher_t;
+
 
     class Context_t {
+    typedef char Block_t[BLOCK_SIZE];
     public:
         Context_t() {
             fill_zero(block);
@@ -43,7 +45,7 @@ public:
     };
 
 
-    CBC_t(Cipher_t &cipher) :
+    explicit CBC_t(Cypher_t &cipher) :
         cipher(cipher)
     {}
 
@@ -77,8 +79,7 @@ private:
     }
 
 private:
-    Cipher_t &cipher;
+    Cypher_t &cipher;
 };
-
 }
 #endif

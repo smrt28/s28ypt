@@ -13,9 +13,25 @@ public:
     off_t size();
     void close();
 
+    enum Whence_t {
+        SET_TO,
+        FROM_CUR,
+        FROM_END
+    };
+
+
+    off_t seek(off_t offset, Whence_t whence = SET_TO);
+
 private:
     int _fd;
 };
+
+
+struct FileOpener_t {
+    static void forRead(const std::string &fname, FD_t &fd);
+    static void forWrite(const std::string &fname, FD_t &fd);
+};
+
 
 }
 
