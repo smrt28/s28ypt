@@ -2,6 +2,8 @@
 #define S28_ARRAY_H
 
 #include "safemem.h"
+#include "error.h"
+
 namespace s28 {
 
 template<typename Type_t>
@@ -46,12 +48,20 @@ private:
 
 
 template<typename Type_t, size_t SIZE>
-class Array_t : public s28::SafePtr_t<Type_t, SIZE, s28_allocator_t> {};
+class Array_t : public s28::SafePtr_t<Type_t, SIZE, s28_allocator_t> {
+public:
+    void resize(size_t) {
+        raise<errcode::NOT_RESIZABLE>("resize not allowed");
+    }
+};
 
 template<typename Type_t, size_t SIZE>
-class SafeArray_t : public s28::SafePtr_t<Type_t, SIZE, safe_allocator_t> {};
-
-
+class SafeArray_t : public s28::SafePtr_t<Type_t, SIZE, safe_allocator_t> {
+public:
+    void resize(size_t) {
+        raise<errcode::NOT_RESIZABLE>("resize not allowed");
+    }
+};
 
 }
 #endif

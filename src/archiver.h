@@ -11,8 +11,7 @@
 
 namespace s28 {
 
-typedef MutableArray_t<char> Data_t;
-
+template<typename Data_t>
 class Marshaller_t {
 public:
     Marshaller_t(Data_t &data) :
@@ -27,6 +26,11 @@ public:
 
     template<typename T_t, size_t SIZE>
     void put(const Array_t<T_t, SIZE> &a) {
+        _put_array(a.begin(), a.end());
+    }
+
+    template<typename T_t, size_t SIZE>
+    void put(const SafeArray_t<T_t, SIZE> &a) {
         _put_array(a.begin(), a.end());
     }
 
@@ -81,6 +85,7 @@ private:
 
 
 
+template<typename Data_t>
 class Demarshaller_t {
 public:
     Demarshaller_t(Data_t &data) :
@@ -137,62 +142,20 @@ private:
     char * ofs;
 };
 
-template<typename T_t>
-Marshaller_t & operator<<(Marshaller_t &m, T_t val) {
+
+
+template<typename T_t, typename Data_t>
+Marshaller_t<Data_t> & operator<<(Marshaller_t<Data_t> &m, T_t val) {
     m.put(val);
     return m;
 }
 
-template<typename T_t>
-Demarshaller_t & operator>>(Demarshaller_t &d, T_t &val) {
-    val = d.get<T_t>();
+template<typename T_t, typename Data_t>
+Demarshaller_t<Data_t> & operator>>(Demarshaller_t<Data_t> &d, T_t &val) {
+    val = d. template get<T_t>();
     return d;
 }
 
-namespace ar {
-
-template<typename Type_t, int n>
-class Variable_t {
-public:
-    operator Type_t() { return value; }
-    Type_t value;
-};
-
-
-class Struct_t :
-    public Variable_t<uint32_t, 0>,
-    public Variable_t<uint32_t, 1>
-{
-
-};
-
-
-} // namespace ar
-
 }
-
-#if 0
-int main() {
-    try {
-        s28::Data_t data(1);
-        s28::Marshaller_t m(data);
-        m << 1 << 2 << 3 << 4 << "ahojahojahojxxxxxxxxxxxxxxxxxxxxxxxxxxxx.";
-        int32_t a[5];
-
-        s28::Demarshaller_t d(data);
-        std::string s;
-        d >> a[0] >> a[1] >> a[2] >> a[3] >> s;
-
-        std::cout << a[0] << std::endl;
-        std::cout << a[1] << std::endl;
-        std::cout << a[2] << std::endl;
-        std::cout << a[3] << std::endl;
-        std::cout << s << std::endl;
-    } catch(const std::exception &e) {
-        std::cout << "err: " << e.what() << std::endl;
-    }
-    return 0;
-}
-#endif
 
 #endif

@@ -38,6 +38,7 @@ struct s28_allocator_t {
         void * rv = ::malloc(n);
         if (rv) return rv;
         raise<errcode::ALLOC>("malloc failed");
+        return 0;
     }
 
     static void free(void *ptr) {
@@ -73,6 +74,10 @@ public:
         memset(t, 0, DATA_SIZE);
     }
 
+    void random() {
+        fill_random((void *)t, DATA_SIZE);
+    }
+
     T_t * get() { return t; }
     const T_t * get() const { return t; }
 
@@ -95,6 +100,11 @@ public:
     size_t size() const { return SIZE; } 
     size_t data_size() const { return DATA_SIZE; }
 
+    void swap(SafePtr_t<T_t, CNT> &ptr) {
+        T_t *tmp = t;
+        t = ptr.t;
+        ptr.t = tmp;
+    }
 private:
     // not copyable
     SafePtr_t & operator=(const SafePtr_t &);

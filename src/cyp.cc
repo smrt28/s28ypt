@@ -29,6 +29,7 @@
 #include "aes.h"
 #include "archiver.h"
 #include "error.h"
+#include "sha256.h"
 static const int MASTER_KEY_SIZE = 32;
 
 
@@ -70,98 +71,13 @@ private:
 };
 
 
-template<bool direction, typename IO_t, typename Cypher_t, typename Context_t>
-class crypt_control_t {};
 
-
-template<typename IO_t, typename Cypher_t, typename Context_t>
-class crypt_control_t<true, IO_t, Cypher_t, Context_t> {
-public:
-    uint64_t filesize;
-    void handle(Cypher_t &cipher,
-            Context_t &ctx,
-            IO_t &in,
-            IO_t &out) 
-    {
-        char seed[Cypher_t::BLOCK_SIZE];
-        char buf[Cypher_t::BLOCK_SIZE];
-        s28::fill_random(seed);
-        cipher.process(seed, buf, ctx);
-        out.write(buf, Cypher_t::BLOCK_SIZE);
-
-        s28::Data_t header(Cypher_t::BLOCK_SIZE);
-        header.zero();
-        s28::Marshaller_t m(header);
-        filesize = in.size();
-        m << filesize;
-        m << uint32_t(0x0A280B28);
-        size_t ds = m.data_size();
-
-        if (ds > Cypher_t::BLOCK_SIZE) {
-            s28::raise<s28::errcode::IMPOSSIBLE>("header doesn't fit block");
-        }
-
-        cipher.process(header.begin(), buf, ctx);
-        out.write(buf, Cypher_t::BLOCK_SIZE);
-    }
-
-    void write(IO_t &io, void *buf, size_t count) {
-        io.write(buf, count);
-    }
-
-};
-
-template<typename IO_t, typename Cypher_t, typename Context_t>
-class crypt_control_t<false, IO_t, Cypher_t, Context_t> {
-public:
-    uint64_t filesize;
-    uint64_t rem;
-    void handle(Cypher_t &cipher,
-            Context_t &ctx,
-            IO_t &in,
-            IO_t &/*out*/) 
-    {
-        char buf[s28::AES_t::BLOCK_SIZE];
-        char tmp[s28::AES_t::BLOCK_SIZE];
-        
-        in.read(buf, s28::AES_t::BLOCK_SIZE);
-        cipher.process(buf, tmp, ctx);
-
-        s28::Data_t header(Cypher_t::BLOCK_SIZE);
-        in.read(buf, s28::AES_t::BLOCK_SIZE);
-        cipher.process(buf, header.begin(), ctx);
-
-        s28::Demarshaller_t dm(header);
-        dm >> filesize;
-        uint32_t magic;
-        dm >> magic;
-        if (magic != 0x0A280B28) {
-            s28::raise<s28::errcode::INVALID_MAGIC>("invalid password"
-                    " or not s28ypted");
-        }
-        rem = filesize;
-    }
-
-    void write(IO_t &io, void *buf, size_t count) {
-        if (rem >= count) {
-            rem -= count;
-            io.write(buf, count);
-            return;
-        }
-        io.write(buf, rem);
-        rem = 0;
-    }
-};
-
-
-template<bool direction>
-void process_file(s28::AES_t &_aes,
-        s28::FD_t &fdin,
-        s28::FD_t &fdout)
+template<typename Cypher_t, typename IN_t, typename OUT_t, bool direction>
+void process_file(Cypher_t &aes,
+        IN_t &fdin,
+        OUT_t &fdout)
 {
-    typedef s28::CBC_t<s28::AES_t, direction> Cypher_t;
     typedef typename Cypher_t::Context_t Context_t;
-    Cypher_t aes(_aes);
     typedef s28::FD_t IO_t;
 
 	char buf[4096];
@@ -169,12 +85,7 @@ void process_file(s28::AES_t &_aes,
     s28::fill_zero(buf);
     s28::fill_zero(obuf);
 
-
     Context_t ctx;
-    crypt_control_t<direction, IO_t, Cypher_t, Context_t> ctl;
-
-    ctl.handle(aes, ctx, fdin, fdout);
-
 
 	for (;;) {
 		ssize_t rd = fdin.read(buf, sizeof(buf));
@@ -189,30 +100,144 @@ void process_file(s28::AES_t &_aes,
 			in += s28::AES_t::BLOCK_SIZE;
 			out += s28::AES_t::BLOCK_SIZE;
 		}
-		ctl.write(fdout, obuf, out - obuf);
+		fdout.write(obuf, out - obuf);
 	}
 }
 
 
+template<typename Cypher_t, size_t len>
+class blocks_processor_t(char *ptr) {
+private:
+    struct dummy_t { int a[len % Cypher_t::BLOCK_SIZE != 0 ? -1 : 1]; };
+public:
+    static void process(Cypher_t *cyp, char *ptr) {
+
+
+    }
+}
+
+template<typename Digest_t, typename IO_t>
+class MAC_t {
+public:
+    MAC_t(Digest_t &digest, IO_t &io) :
+        digest(digest),
+        io(io)
+    {}
+
+    ssize_t read(void *buf, size_t len) {
+        ssize_t rv = io.read(buf, len);
+        if (rv > 0) {
+            digest.update(buf, len);
+        }
+        return rv;
+    }
+
+    ssize_t write(void *buf, size_t len) {
+        digest.update(buf, len);
+        return io.write(buf, len);
+    }
+
+private:
+    Digest_t &digest;
+    IO_t &io;
+};
+
+
+namespace aux {
+
+template<typename Cypher_t, typename Input_t, typename Output_t>
+void encrypt(Cypher_t &cyp, Input_t &in, Output_t &out) {
+    process_file<Cypher_t, Input_t, Output_t, true>(cyp, in, out);
+}
+
+template<typename Cypher_t, typename Input_t, typename Output_t>
+void decrypt(Cypher_t &cyp, Input_t &in, Output_t &out) {
+    process_file<Cypher_t, Input_t, Output_t, false>(cyp, in, out);
+}
+
+
+}
+
+
+template<typename BlockCypher_t, typename Ptr_t>
+void randomize_with_cypher(BlockCypher_t &bc, Ptr_t &ptr) {
+    ptr.random();
+
+    typedef s28::SafeArray_t<char, BlockCypher_t::BLOCK_SIZE> Block_t;
+    Block_t block1;
+    Block_t block2;
+    block1.random();
+
+
+    for(typename Ptr_t::iterator it = ptr.begin(), eit=ptr.end();;)
+    {
+        bc.encrypt(block1, block2);
+        block1.swap(block2);
+
+        for(typename Block_t::iterator 
+                bit = block1.begin(), beit = block1.end();
+                bit != beit; ++bit)
+        {
+            *it ^= *bit;
+            ++it;
+            if (it == eit) return;
+        }
+    }
+}
 
 template<bool direction>
-void process_file(s28::AES_t &_aes,
+void process_file(s28::AES_t &__aes,
         const std::string &inFile,
         const std::string &outFile)
 {
-    typedef s28::CBC_t<s28::AES_t, direction> Cypher_t;
-    Cypher_t aes(_aes);
+    static const size_t HEADER_SIZE = 512;
+    typedef s28::SafeArray_t<char, HEADER_SIZE> Header_t;
+
+
+    typedef s28::AES_t BlockCypher_t;
+    typedef s28::CBC_t<BlockCypher_t, direction> Cypher_t;
 
     typedef s28::FD_t IO_t;
-
-	s28::FD_t fdin;
-	s28::FD_t fdout;
+    typedef s28::sha256_t Digest_t;
+	
+    IO_t fdin;
+	IO_t fdout;
 
 	mode_t mode = S_IRUSR | S_IWUSR;
 	fdin.set(open(inFile.c_str(), O_RDONLY));
-	fdout.set(open(outFile.c_str(), O_WRONLY | O_CREAT, mode));
+    fdout.set(open(outFile.c_str(), O_WRONLY | O_CREAT, mode));
+    if (direction) {
+        s28::SafeArray_t<char, BlockCypher_t::KEY_SIZE> master;
+        randomize_with_cypher(__aes, master);
+        BlockCypher_t masterblock;
+        masterblock.init(master.get());
+        Cypher_t cyp(masterblock);
+        Digest_t digest;
+        MAC_t<Digest_t, IO_t> min(digest, fdin);
+        aux::encrypt(cyp, min, fdout);
 
-    process_file<direction>(_aes, fdin, fdout);
+        Header_t header;
+        header.zero();
+
+        s28::Marshaller_t<Header_t> m(header);
+
+        s28::SafeArray_t<char, BlockCypher_t::BLOCK_SIZE> seed;
+        seed.random();
+
+        m.put(seed); // seed
+        m << uint16_t(0x1); // version
+        m << uint16_t(0x2828); // magic
+        m.put(master); // master key
+        m << fdin.size(); // file size
+        s28::Array_t<char, Digest_t::DIGEST_LENGTH> hash;
+        digest.finalize(hash.get());
+        m.put(hash); // hash
+
+
+    } else {
+        Cypher_t cyp(__aes);
+        aux::decrypt(cyp, fdin, fdout);
+    }
 }
 
 

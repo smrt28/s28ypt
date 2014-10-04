@@ -23,6 +23,7 @@ namespace errcode {
     typedef ErrorCode_t<errc::MEMORY, 101> MLOCK;
     typedef ErrorCode_t<errc::MEMORY, 102> ALLOC;
     typedef ErrorCode_t<errc::MEMORY, 103> INVALID_FD;
+    typedef ErrorCode_t<errc::MEMORY, 104> NOT_RESIZABLE;
 
     // IO category
     typedef ErrorCode_t<errc::IO, 200> READ;
