@@ -69,6 +69,29 @@ off_t FD_t::size() {
     return st.st_size;
 }
 
+off_t FD_t::seek(off_t offset, Whence_t whence) {
+    check_fd(_fd);
+    off_t rv;
+    int w;
+    switch(whence) {
+        case SET_TO:
+            w = SEEK_SET;
+            break;
+        case FROM_CUR:
+            w = SEEK_CUR;
+            break;
+        case FROM_END:
+            w = SEEK_END;
+            break;
+        default:
+            raise<errcode::SEEK>("unknown whence");
+    }
+    if ((rv = lseek(_fd, offset, w)) == -1) {
+        raise<errcode::SEEK>("lseek failed");
+    }
+    return rv;
+}
+
 
 }
 

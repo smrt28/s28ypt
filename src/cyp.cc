@@ -30,6 +30,8 @@
 #include "archiver.h"
 #include "error.h"
 #include "sha256.h"
+#include "header28.h"
+
 static const int MASTER_KEY_SIZE = 32;
 
 
@@ -50,7 +52,7 @@ public:
         SHA256_Update(ctx.get(), pass, len);
         SHA256_Final(hash, ctx.get());
 
-        for (int i = 0; i < 3000000; ++i) {
+        for (int i = 0; i < 30000; ++i) {
             SHA256_Init(ctx.get());
             SHA256_Update(ctx.get(), hash, SHA256_DIGEST_LENGTH);
             SHA256_Final(hash, ctx.get());
@@ -104,7 +106,7 @@ void process_file(Cypher_t &aes,
 	}
 }
 
-
+/*
 template<typename Cypher_t, size_t len>
 class blocks_processor_t(char *ptr) {
 private:
@@ -115,6 +117,7 @@ public:
 
     }
 }
+*/
 
 template<typename Digest_t, typename IO_t>
 class MAC_t {
@@ -185,12 +188,25 @@ void randomize_with_cypher(BlockCypher_t &bc, Ptr_t &ptr) {
     }
 }
 
+template<typename Cypher_t>
+void process_mem(Cypher_t &cyp, char * in, char * out, size_t size) {
+    typename Cypher_t::Context_t ctx;
+    while(size) {
+        if (size < Cypher_t::BLOCK_SIZE) return;
+        cyp.process(in, out, ctx);
+        in += Cypher_t::BLOCK_SIZE;
+        out += Cypher_t::BLOCK_SIZE;
+        size -= Cypher_t::BLOCK_SIZE;
+    }
+}
+
+
 template<bool direction>
 void process_file(s28::AES_t &__aes,
         const std::string &inFile,
         const std::string &outFile)
 {
-    static const size_t HEADER_SIZE = 512;
+    static const size_t HEADER_SIZE = 256;
     typedef s28::SafeArray_t<char, HEADER_SIZE> Header_t;
 
 
@@ -214,29 +230,63 @@ void process_file(s28::AES_t &__aes,
         Cypher_t cyp(masterblock);
         Digest_t digest;
         MAC_t<Digest_t, IO_t> min(digest, fdin);
-        aux::encrypt(cyp, min, fdout);
-
         Header_t header;
         header.zero();
+        
+        fdout.write(header.get(), Header_t::SIZE);
+
+        aux::encrypt(cyp, min, fdout);
 
         s28::Marshaller_t<Header_t> m(header);
 
         s28::SafeArray_t<char, BlockCypher_t::BLOCK_SIZE> seed;
         seed.random();
 
+
         m.put(seed); // seed
         m << uint16_t(0x1); // version
         m << uint16_t(0x2828); // magic
         m.put(master); // master key
-        m << fdin.size(); // file size
+        uint64_t fsize = fdin.size();
+        std::cout << fsize << std::endl;
+        m << fsize; // file size
         s28::Array_t<char, Digest_t::DIGEST_LENGTH> hash;
         digest.finalize(hash.get());
         m.put(hash); // hash
 
+        std::cout << s28::hex(header.get(), Header_t::SIZE) << std::endl << std::endl;
+        Header_t headerEnc;
+        Cypher_t hcyp(__aes);
+        process_mem(hcyp, header.get(), headerEnc.get(), Header_t::SIZE);
+
+        fdout.seek(0);
+        fdout.write(headerEnc.get(), Header_t::SIZE);
+
 
     } else {
         Cypher_t cyp(__aes);
-        aux::decrypt(cyp, fdin, fdout);
+        Header_t encHeader;
+        encHeader.zero();
+        fdin.read(encHeader.get(), Header_t::SIZE);
+        Header_t header;
+        process_mem(cyp, encHeader.get(), header.get(), Header_t::SIZE);
+        std::cout << s28::hex(header.get(), Header_t::SIZE) << std::endl;
+        s28::Demarshaller_t<Header_t> d(header);
+        s28::SafeArray_t<char, BlockCypher_t::BLOCK_SIZE> seed;
+        d.get(seed);
+        uint16_t tmp16;
+        d >> tmp16;
+        std::cout << tmp16 << std::endl;
+        d >> tmp16;
+        std::cout << tmp16 << std::endl;
+
+        uint64_t fsize;
+        d >> fsize;
+        std::cout << fsize << std::endl;
+        
+
+
+        //aux::decrypt(cyp, fdin, fdout);
     }
 }
 

@@ -32,9 +32,5 @@ private:
     SafePtr_t<Secret_t> keys;
 };
 
-
-
 }
-
-
 #endif

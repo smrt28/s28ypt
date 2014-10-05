@@ -28,11 +28,14 @@ public:
 }
 
 
-template<typename Cipher_t, bool direction>
+template<typename Cypher_t, bool direction>
 class CBC_t {
 public:
-    static const size_t BLOCK_SIZE = Cipher_t::BLOCK_SIZE;
+    static const size_t BLOCK_SIZE = Cypher_t::BLOCK_SIZE;
+    
+    typedef Cypher_t BlockCypher_t;
     typedef char Block_t[BLOCK_SIZE];
+
 
     class Context_t {
     public:
@@ -43,7 +46,7 @@ public:
     };
 
 
-    CBC_t(Cipher_t &cipher) :
+    CBC_t(Cypher_t &cipher) :
         cipher(cipher)
     {}
 
@@ -77,7 +80,7 @@ private:
     }
 
 private:
-    Cipher_t &cipher;
+    Cypher_t &cipher;
 };
 
 }

@@ -11,6 +11,13 @@
 
 namespace s28 {
 
+namespace ar {
+template<typename Type_t>
+class Variable_t {
+};
+
+};
+
 template<typename Data_t>
 class Marshaller_t {
 public:
@@ -38,21 +45,25 @@ public:
         return ofs - _data.begin();
     }
 
+
+
 private:
     void _put(uint64_t val) { put_raw(htole64(val)); }
     void _put(uint32_t val) { put_raw(htole32(val)); }
     void _put(uint16_t val) { put_raw(htole16(val)); }
     void _put(uint8_t val) { put_raw(val); }
 
-    void _put(int64_t val) { put_raw(htole64(val)); }
-    void _put(int32_t val) { put_raw(htole32(val)); }
-    void _put(int16_t val) { put_raw(htole16(val)); }
+    void _put(char val) { put_raw(val); }
     void _put(int8_t val) { put_raw(val); }
+    void _put(int16_t val) { put_raw(htole16(val)); }
+    void _put(int32_t val) { put_raw(htole32(val)); }
+    void _put(int64_t val) { put_raw(htole64(val)); }
 
     template<typename It_t>
     void _put_array(It_t it, It_t eit) {
-        for (;it != eit;++it)
+        for (;it != eit;++it) {
             _put(*it);
+        }
     }
 
     void _put(const std::string &s) {
@@ -100,6 +111,12 @@ public:
         return val;
     }
 
+    template<typename T_t, size_t SIZE>
+    void get(SafeArray_t<T_t, SIZE> &a) {
+        get_raw(a.get(), SIZE);
+    }
+
+
 private:
     void _get(uint64_t &val) { val = le64toh(get_raw<uint64_t>()); }
     void _get(uint32_t &val) { val = le32toh(get_raw<uint32_t>()); }
@@ -110,6 +127,7 @@ private:
     void _get(int32_t &val) { val = le32toh(get_raw<int32_t>()); }
     void _get(int16_t &val) { val = le16toh(get_raw<int16_t>()); }
     void _get(int8_t &val) { val = get_raw<int8_t>(); }
+    void _get(char &val) { val = get_raw<char>(); }
 
 
     void _get(std::string &s) {
@@ -130,6 +148,13 @@ private:
         ofs += len;
         return rv;
     }
+
+    void get_raw(void *ptr, size_t len) {
+        check(len);
+        memcpy(ptr, ofs, len);
+        ofs += len;
+    }
+
 
     void check(size_t len) {
         if (ofs + len > _data.end()) {
