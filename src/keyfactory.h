@@ -36,8 +36,8 @@ class KeyFactory_t {
 public:
     KeyFactory_t() {}
 
-    const char * get() const {
-        return (char *)master.get();
+    const Master_t & get() const {
+        return master;
     }
 
     void init(const char *pass) {

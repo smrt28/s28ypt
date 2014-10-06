@@ -1,6 +1,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <iostream>
+#include <fcntl.h>
 
 #include "file.h"
 #include "error.h"
@@ -92,6 +93,15 @@ off_t FD_t::seek(off_t offset, Whence_t whence) {
     return rv;
 }
 
+void FileOpener_t::forRead(const std::string &fname, FD_t &fd) {
+	fd.set(open(fname.c_str(), O_RDONLY));
 
 }
 
+void FileOpener_t::forWrite(const std::string &fname, FD_t &fd) {
+	mode_t mode = S_IRUSR | S_IWUSR | O_TRUNC;
+    fd.set(open(fname.c_str(), O_WRONLY | O_CREAT, mode));
+}
+
+
+}

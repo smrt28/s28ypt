@@ -154,27 +154,47 @@ void process_mem(Cypher_t &cyp, char * in, char * out, size_t size) {
 }
 
 
-template<bool direction>
-void process_file(s28::AES_t &__aes,
+template<template<typename, bool> class _Mode_t,
+    typename _Cypher_t,
+    typename _Digest_t>
+struct S28Config_t {
+public:
+
+    typedef _Digest_t Digest_t;
+    typedef _Cypher_t BlockCypher_t;
+    typedef s28::SafePtr_t<char, BlockCypher_t::KEY_SIZE> DerivedKey_t;
+
+    template<bool direction>
+    struct def_t {
+        typedef _Mode_t<_Cypher_t, direction> Cypher_t;
+    };
+};
+
+typedef S28Config_t<s28::CBC_t, s28::AES_t, s28::sha256_t> E_t;
+
+template<bool direction, typename Opener_t, typename Cfg_t>
+void s28_file(const typename Cfg_t::DerivedKey_t &key,
         const std::string &inFile,
         const std::string &outFile)
 {
     static const size_t HEADER_SIZE = 256;
     typedef s28::SafeArray_t<char, HEADER_SIZE> Header_t;
 
+    typedef typename Cfg_t::BlockCypher_t BlockCypher_t;
+    typedef typename Cfg_t::template def_t<direction>::Cypher_t Cypher_t;
+    typedef typename Cfg_t::Digest_t Digest_t;
 
-    typedef s28::AES_t BlockCypher_t;
-    typedef s28::CBC_t<BlockCypher_t, direction> Cypher_t;
+    typename Cfg_t::BlockCypher_t __aes;
+    __aes.init(key.get());
 
     typedef s28::FD_t IO_t;
-    typedef s28::sha256_t Digest_t;
 
     IO_t fdin;
 	IO_t fdout;
 
-	mode_t mode = S_IRUSR | S_IWUSR;
-	fdin.set(open(inFile.c_str(), O_RDONLY));
-    fdout.set(open(outFile.c_str(), O_WRONLY | O_CREAT, mode));
+    Opener_t::forRead(inFile, fdin);
+    Opener_t::forWrite(outFile, fdout);
+
     if (direction) {
         s28::SafeArray_t<char, BlockCypher_t::KEY_SIZE> master;
         randomize_with_cypher(__aes, master);
@@ -306,13 +326,13 @@ int _main(int argc, char **argv) {
     s28::KeyFactory_t<Digest_t, Cypher_t> pass;
     pass.init(rawpass.get());
 
-    Cypher_t aes;
-    aes.init(pass.get());
+    //Cypher_t aes;
+    //aes.init(pass.get());
 
     if (encrypt) {
-        process_file<true>(aes, argv[2], argv[3]);
+        s28_file<true, s28::FileOpener_t, E_t>(pass.get(), argv[2], argv[3]);
     } else {
-        process_file<false>(aes, argv[2], argv[3]);
+        s28_file<false, s28::FileOpener_t, E_t>(pass.get(), argv[2], argv[3]);
     }
 	return 0;
 }

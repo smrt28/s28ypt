@@ -33,14 +33,11 @@ class CBC_t {
 public:
     static const size_t BLOCK_SIZE = Cypher_t::BLOCK_SIZE;
 	static const bool DIRECTION = direction;
-    
     typedef Cypher_t BlockCypher_t;
-    typedef char Block_t[BLOCK_SIZE];
-
-
 
 
     class Context_t {
+    typedef char Block_t[BLOCK_SIZE];
     public:
         Context_t() {
             fill_zero(block);
@@ -85,6 +82,7 @@ private:
 private:
     Cypher_t &cipher;
 };
+
 
 }
 #endif
