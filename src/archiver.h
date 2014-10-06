@@ -122,6 +122,13 @@ public:
     }
 
 
+    const char * offset() const {
+        return ofs;
+    }
+
+    const char * end() const {
+        return _data.end();
+    }
 private:
     void _get(uint64_t &val) { val = le64toh(get_raw<uint64_t>()); }
     void _get(uint32_t &val) { val = le32toh(get_raw<uint32_t>()); }

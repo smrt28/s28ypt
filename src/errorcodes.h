@@ -16,6 +16,7 @@ namespace errc {
     static const int IO = 2;
     static const int MARSHAL = 3;
 	static const int INTERNAL = 4;
+    static const int DECRYPT = 5;
 }
 
 namespace errcode {
@@ -35,9 +36,12 @@ namespace errcode {
     typedef ErrorCode_t<errc::MARSHAL, 301> BOUNDS;
 
 	typedef ErrorCode_t<errc::INTERNAL, 401> IMPOSSIBLE;
-	typedef ErrorCode_t<errc::INTERNAL, 402> INVALID_MAGIC;
-	typedef ErrorCode_t<errc::INTERNAL, 403> INCONSISTENT;
-	typedef ErrorCode_t<errc::INTERNAL, 404> INVALID_VERSION;
+
+
+	typedef ErrorCode_t<errc::INTERNAL, 501> INVALID_MAGIC;
+	typedef ErrorCode_t<errc::INTERNAL, 502> INCONSISTENT;
+	typedef ErrorCode_t<errc::INTERNAL, 503> INVALID_VERSION;
+	typedef ErrorCode_t<errc::INTERNAL, 504> MALFORMED_HEADER;
 
 }
 
