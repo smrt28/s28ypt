@@ -36,6 +36,9 @@ namespace errcode {
 
 	typedef ErrorCode_t<errc::INTERNAL, 401> IMPOSSIBLE;
 	typedef ErrorCode_t<errc::INTERNAL, 402> INVALID_MAGIC;
+	typedef ErrorCode_t<errc::INTERNAL, 403> INCONSISTENT;
+	typedef ErrorCode_t<errc::INTERNAL, 404> INVALID_VERSION;
+
 }
 
 }

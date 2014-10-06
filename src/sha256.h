@@ -17,8 +17,12 @@ public:
     }
 
     void update(const void *ptr, size_t size) {
-		//std::cerr.write((const char *)ptr, size);
         SHA256_Update(ctx, ptr, size);
+    }
+
+    template<typename T_t, size_t LEN>
+    void update(const SafePtr_t<T_t, LEN> &ptr) {
+        update(ptr.get(), LEN);
     }
 
     template<typename T_t>
@@ -29,6 +33,7 @@ public:
     template<typename T_t>
     void finalize(T_t *ptr) {
         SHA256_Final((unsigned char *)ptr, ctx);
+        init();
     }
 
 private:

@@ -32,16 +32,12 @@
 #include "sha256.h"
 #include "header28.h"
 
-static const int MASTER_KEY_SIZE = 32;
 
-
-namespace s28 {
-void nop() {
-
-}
-}
-
+template<typename Digest_t, typename Cypher_t, int iterations = 3000000>
 class Password_t {
+    typedef s28::SafePtr_t<char, Digest_t::DIGEST_LENGTH> Hash_t;
+    typedef s28::SafePtr_t<char, Cypher_t::KEY_SIZE> Master_t;
+
 public:
     Password_t() {}
 
@@ -49,33 +45,52 @@ public:
         return (char *)master.get();
     }
 
-    void init(const char *pass) {
-        s28::SafePtr_t<unsigned char, SHA256_DIGEST_LENGTH> rawKey;
-        s28::SafePtr_t<SHA256_CTX> ctx;
-        unsigned char *hash = rawKey.get();
-        size_t len = strlen(pass);
-        SHA256_Init(ctx.get());
-        SHA256_Update(ctx.get(), pass, len);
-        SHA256_Final(hash, ctx.get());
+    void expand(const Hash_t &_h) {
+        master.zero();
+        Hash_t h;
+        h.zero();
+        Digest_t digest;
+        typename Master_t::iterator mit = master.begin();
+        typename Master_t::iterator meit = master.end();
+        for (;;) {
+            digest.init();
+            digest.update(_h);
+            digest.update(h);
+            digest.update(_h);
+            digest.finalize(h);
+            for (typename Hash_t::const_iterator it = h.begin(),
+                    eit = h.end(); it != eit; ++it) 
+            {
+                if (mit == meit) return;
+                *mit = *it;
+                mit++;
+            }
+        }
+    }
 
-        for (int i = 0; i < 30000; ++i) {
-            SHA256_Init(ctx.get());
-            SHA256_Update(ctx.get(), hash, SHA256_DIGEST_LENGTH);
-            SHA256_Final(hash, ctx.get());
+    void init(const char *pass) {
+        Digest_t digest;
+        Hash_t rawKey;
+        size_t len = strlen(pass);
+        digest.update(pass, len);
+        digest.finalize(rawKey);
+
+        for (int i = 0; i < iterations; ++i) {
+            digest.init();
+            digest.update(rawKey);
+            digest.finalize(rawKey);
         }
 
-        SHA256_Init(ctx.get());
-        SHA256_Update(ctx.get(), pass, len);
-        SHA256_Update(ctx.get(), hash, SHA256_DIGEST_LENGTH);
-        SHA256_Update(ctx.get(), pass, len);
-        SHA256_Final(hash, ctx.get());
-        master.zero();
-        memcpy(master.get(), rawKey.get(),
-                std::min(SHA256_DIGEST_LENGTH, MASTER_KEY_SIZE));
+        digest.init();
+        digest.update(pass, len);
+        digest.update(rawKey);
+        digest.update(pass, len);
+        digest.finalize(rawKey);
+        expand(rawKey);
     }
 
 private:
-    s28::SafePtr_t<unsigned char, MASTER_KEY_SIZE> master;
+    Master_t master;
 };
 
 
@@ -216,6 +231,7 @@ void process_file(s28::AES_t &__aes,
 
     typedef s28::FD_t IO_t;
     typedef s28::sha256_t Digest_t;
+
 	
     IO_t fdin;
 	IO_t fdout;
@@ -249,18 +265,13 @@ void process_file(s28::AES_t &__aes,
         m << uint16_t(0x1); // version
         m << uint16_t(0x2828); // magic
         m.put(master); // master key
-        std::cout << fsize << std::endl;
         m << fsize; // file size
         s28::Array_t<char, Digest_t::DIGEST_LENGTH> hash;
         digest.finalize(hash.get());
         m.put(hash); // hash
-
-        std::cout << s28::hex(master.get(), master.size()) << std::endl << std::endl;
-        std::cout << "h:" << s28::hex(hash.get(), hash.size()) << std::endl << std::endl;
         Header_t headerEnc;
         Cypher_t hcyp(__aes);
         process_mem(hcyp, header.get(), headerEnc.get(), Header_t::SIZE);
-
         fdout.seek(0);
         fdout.write(headerEnc.get(), Header_t::SIZE);
 
@@ -272,21 +283,25 @@ void process_file(s28::AES_t &__aes,
         fdin.read(encHeader.get(), Header_t::SIZE);
         Header_t header;
         process_mem(cyp, encHeader.get(), header.get(), Header_t::SIZE);
-        std::cout << s28::hex(header.get(), Header_t::SIZE) << std::endl;
+        //std::cout << s28::hex(header.get(), Header_t::SIZE) << std::endl;
         s28::Demarshaller_t<Header_t> d(header);
         s28::SafeArray_t<char, BlockCypher_t::BLOCK_SIZE> seed;
         s28::SafeArray_t<char, BlockCypher_t::KEY_SIZE> master;
-        s28::Array_t<char, Digest_t::DIGEST_LENGTH> hash;
+        s28::Array_t<char, Digest_t::DIGEST_LENGTH> hash, hashres;
         d.get(seed);
         uint16_t tmp16;
         d >> tmp16; // version
-        std::cout << tmp16 << std::endl;
-        d >> tmp16; // magic
-        if (tmp16 != 0x2828) {
-            s28::raise<s28::errcode::INVALID_MAGIC>(
-                    "invalid password or not s28ypted");
+        if (tmp16 != 1) {
+            s28::raise<s28::errcode::INVALID_VERSION>("version doesn't match");
         }
-        std::cout << tmp16 << std::endl;
+        
+        //std::cout << tmp16 << std::endl;
+        d >> tmp16; // magic
+        
+        if (tmp16 != 0x2828) {
+            s28::raise<s28::errcode::INVALID_MAGIC>("wrong magic");
+        }
+        //std::cout << tmp16 << std::endl;
 
         d.get(master);
         uint64_t fsize;
@@ -295,13 +310,19 @@ void process_file(s28::AES_t &__aes,
 
         Digest_t digest;
         MAC_t<Digest_t, IO_t, direction> min(digest, fdout, fsize);
-        std::cout << s28::hex(master.get(), master.size()) << std::endl << std::endl;
+        // std::cout << s28::hex(master.get(), master.size()) << std::endl << std::endl;
         BlockCypher_t masterblock;
         masterblock.init(master.get());
         Cypher_t dcyp(masterblock);
         aux::decrypt(dcyp, fdin, min);
-        digest.finalize(hash.get());
-        std::cout << "h:" << s28::hex(hash.get(), hash.size()) << std::endl << std::endl;
+        digest.finalize(hashres.get());
+
+        if (!hash.cmp(hashres)) {
+            s28::raise<s28::errcode::INCONSISTENT>("broken data");
+        }
+
+        //std::cout << "h:" << s28::hex(hash.get(), hash.size()) << std::endl << std::endl;
+        //std::cout << "h:" << s28::hex(hashres.get(), hashres.size()) << std::endl << std::endl;
     }
 }
 
@@ -313,6 +334,9 @@ char * getpass(const char *msg) {
 }
 
 int _main(int argc, char **argv) {
+    typedef s28::AES_t Cypher_t;
+    typedef s28::sha256_t Digest_t;
+
     if (argc != 4) {
         std::cerr << "err: args" << std::endl;
         return -1;
@@ -346,10 +370,10 @@ int _main(int argc, char **argv) {
         memset(ptmp, 0, sz);
     }
 
-    Password_t pass;
+    Password_t<Digest_t, Cypher_t> pass;
     pass.init(rawpass.get());
-   
-    s28::AES_t aes;
+
+    Cypher_t aes;
     aes.init(pass.get());
 
     if (encrypt) {

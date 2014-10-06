@@ -94,6 +94,15 @@ public:
         return *t;
     }
 
+
+    template<typename Ptr_t>
+    bool cmp(const Ptr_t &ptr) const {
+        if (Ptr_t::DATA_SIZE != DATA_SIZE) return false;
+        if (::memcmp(ptr.get(), get(), DATA_SIZE) == 0)
+            return true;
+        return false;
+    }
+
     T_t & operator[](size_t idx) { return t[idx]; }
     const T_t & operator[](size_t idx) const { return t[idx]; }
 
