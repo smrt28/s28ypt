@@ -17,6 +17,7 @@ public:
     }
 
     void update(const void *ptr, size_t size) {
+		//std::cerr.write((const char *)ptr, size);
         SHA256_Update(ctx, ptr, size);
     }
 

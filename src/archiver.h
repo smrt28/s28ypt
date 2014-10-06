@@ -112,6 +112,11 @@ public:
     }
 
     template<typename T_t, size_t SIZE>
+    void get(Array_t<T_t, SIZE> &a) {
+        get_raw(a.get(), SIZE);
+    }
+
+    template<typename T_t, size_t SIZE>
     void get(SafeArray_t<T_t, SIZE> &a) {
         get_raw(a.get(), SIZE);
     }
