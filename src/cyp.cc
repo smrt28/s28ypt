@@ -144,7 +144,8 @@ void randomize_with_cypher(BlockCypher_t &bc, Ptr_t &ptr) {
 template<typename Cypher_t>
 void process_mem(Cypher_t &cyp, char * in, char * out, size_t size) {
     typename Cypher_t::Context_t ctx;
-    while (size < Cypher_t::BLOCK_SIZE) {
+    while(size) {
+        if (size < Cypher_t::BLOCK_SIZE) return;
         cyp.process(in, out, ctx);
         in += Cypher_t::BLOCK_SIZE;
         out += Cypher_t::BLOCK_SIZE;
