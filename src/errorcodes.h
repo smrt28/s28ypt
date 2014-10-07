@@ -36,6 +36,7 @@ namespace errcode {
     typedef ErrorCode_t<errc::MARSHAL, 301> BOUNDS;
 
     typedef ErrorCode_t<errc::INTERNAL, 401> IMPOSSIBLE;
+    typedef ErrorCode_t<errc::INTERNAL, 402> ARGS;
 
 
     typedef ErrorCode_t<errc::INTERNAL, 501> INVALID_MAGIC;

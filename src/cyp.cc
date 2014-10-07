@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <sys/mman.h>
 
+#include <vector>
 #include <string>
 #include <exception>
 #include <iostream>
@@ -284,23 +285,77 @@ char * getpass(const char *msg) {
 
 }
 
+struct Params_t {
+    template<typename It_t>
+    Params_t(It_t it, It_t eit) : encrypt(true) {
+        char p = 0;
+        int eset = 0;
+        for(;it != eit;++it) {
+            std::string val = *it;
+            if (val == "-e") {
+                encrypt = true;
+                eset ++;
+                continue;
+            }
+            if (val == "-d") {
+                encrypt = false;
+                eset ++;
+                continue;
+            }
+            if (val == "-f") {
+                p = 'f';
+                continue;
+            }
+
+            if (p == 0) {
+                if (ifile.empty()) {
+                    ifile = *it;
+                    continue;
+                }
+                if (ofile.empty()) {
+                    ofile = *it;
+                    continue;
+                }
+                s28::raise<s28::errcode::ARGS>("args");
+            }
+
+            if (p == 'f') {
+                p = 0;
+                keyfiles.push_back(*it);
+            }
+        }
+
+        if (ifile.empty() || ofile.empty()
+                || eset != 1) {
+            s28::raise<s28::errcode::ARGS>("args");
+        }
+    }
+
+    std::string ifile;
+    std::string ofile;
+    std::vector<std::string> keyfiles;
+    bool encrypt;
+};
+
+
+template<typename KF_t, typename Opener_t, typename It_t>
+void add_key_files(KF_t &kf, It_t it, It_t eit, Opener_t) {
+    for (;it != eit;++it) {
+        s28::FD_t fd;
+        Opener_t::forRead(*it, fd);
+        kf.addKeyFile(fd);
+    }
+}
+
+
+
 int _main(int argc, char **argv) {
     typedef s28::AES_t Cypher_t;
     typedef s28::sha256_t Digest_t;
 
-    if (argc != 4) {
-        std::cerr << "err: args" << std::endl;
-        return -1;
-    }
-    bool encrypt;
-    if (std::string(argv[1]) == "-e") {
-        encrypt = true;
-    } else if (std::string(argv[1]) == "-d") {
-        encrypt = false;
-    } else {
-        std::cerr << "err: args" << std::endl;
-        return 1;
-    }
+
+    Params_t params(argv + 1, argv + argc);
+
 
     char *ptmp = aux::getpass("Enter password:");
     size_t sz = strlen(ptmp);
@@ -308,7 +363,7 @@ int _main(int argc, char **argv) {
     strcpy(rawpass.get(), ptmp);
     memset(ptmp, 0, sz);
 
-    if (encrypt) {
+    if (params.encrypt) {
         ptmp = aux::getpass("Re-enter password:");
 
         if (strcmp(ptmp, rawpass.get()) != 0) {
@@ -324,10 +379,16 @@ int _main(int argc, char **argv) {
     s28::KeyFactory_t<Digest_t, Cypher_t> pass;
     pass.init(rawpass.get());
 
-    if (encrypt) {
-        s28_file<true, s28::FileOpener_t, E_t>(pass.get(), argv[2], argv[3]);
+    add_key_files(pass, params.keyfiles.begin(),
+            params.keyfiles.end(), s28::FileOpener_t());
+
+
+    if (params.encrypt) {
+        s28_file<true, s28::FileOpener_t, E_t>(pass.get(),
+                params.ifile, params.ofile);
     } else {
-        s28_file<false, s28::FileOpener_t, E_t>(pass.get(), argv[2], argv[3]);
+        s28_file<false, s28::FileOpener_t, E_t>(pass.get(),
+                params.ifile, params.ofile);
     }
 	return 0;
 }
@@ -341,6 +402,7 @@ int main(int argc, char **argv) {
 		std::cerr << "err: " << e.what() << std::endl;
 		return 1;
 	}
+    std::cerr << "ok" << std::endl;
 	return 0;
 }
 
