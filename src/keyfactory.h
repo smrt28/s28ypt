@@ -10,13 +10,13 @@ class KeyFactory_t {
     typedef s28::SafePtr_t<char, Digest_t::DIGEST_LENGTH> Hash_t;
     typedef s28::SafePtr_t<char, Cypher_t::KEY_SIZE> Master_t;
 
-    void expand(const Hash_t &_h) {
-        master.zero();
+    void expand(const Hash_t &_h, Master_t &res) {
+        res.zero();
         Hash_t h;
         h.zero();
         Digest_t digest;
-        typename Master_t::iterator mit = master.begin();
-        typename Master_t::iterator meit = master.end();
+        typename Master_t::iterator mit = res.begin();
+        typename Master_t::iterator meit = res.end();
         for (;;) {
             digest.init();
             digest.update(_h);
@@ -34,7 +34,9 @@ class KeyFactory_t {
     }
 
 public:
-    KeyFactory_t() {}
+    KeyFactory_t() {
+        master.zero();
+    }
 
     const Master_t & get() const {
         return master;
@@ -58,7 +60,28 @@ public:
         digest.update(rawKey);
         digest.update(pass, len);
         digest.finalize(rawKey);
-        expand(rawKey);
+        Master_t tmp;
+        expand(rawKey, tmp);
+        master.exor(tmp);
+    }
+
+    template<typename IO_t>
+    void addKeyFile(IO_t &fd) {
+        char buf[4096];
+        size_t rd;
+
+        Digest_t digest;
+
+        for (;;) {
+            rd = fd.read(buf, sizeof(buf));
+            digest.update(buf, rd);
+            if (rd < sizeof(buf)) break;
+        }
+        Hash_t h;
+        digest.finalize(h);
+        Master_t tmp;
+        expand(h, tmp);
+        master.exor(tmp);
     }
 
 private:

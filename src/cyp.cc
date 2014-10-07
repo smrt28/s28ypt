@@ -102,7 +102,6 @@ private:
 
 
 namespace aux {
-
 template<typename Cypher_t, typename Input_t, typename Output_t>
 void encrypt(Cypher_t &cyp, Input_t &in, Output_t &out) {
     process_file<Cypher_t, Input_t, Output_t, true>(cyp, in, out);
@@ -112,7 +111,6 @@ template<typename Cypher_t, typename Input_t, typename Output_t>
 void decrypt(Cypher_t &cyp, Input_t &in, Output_t &out) {
     process_file<Cypher_t, Input_t, Output_t, false>(cyp, in, out);
 }
-
 }
 
 
@@ -325,9 +323,6 @@ int _main(int argc, char **argv) {
 
     s28::KeyFactory_t<Digest_t, Cypher_t> pass;
     pass.init(rawpass.get());
-
-    //Cypher_t aes;
-    //aes.init(pass.get());
 
     if (encrypt) {
         s28_file<true, s28::FileOpener_t, E_t>(pass.get(), argv[2], argv[3]);

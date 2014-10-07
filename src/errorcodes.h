@@ -15,7 +15,7 @@ namespace errc {
     static const int MEMORY = 1;
     static const int IO = 2;
     static const int MARSHAL = 3;
-	static const int INTERNAL = 4;
+    static const int INTERNAL = 4;
     static const int DECRYPT = 5;
 }
 
@@ -35,16 +35,14 @@ namespace errcode {
     // MARSHAL category
     typedef ErrorCode_t<errc::MARSHAL, 301> BOUNDS;
 
-	typedef ErrorCode_t<errc::INTERNAL, 401> IMPOSSIBLE;
+    typedef ErrorCode_t<errc::INTERNAL, 401> IMPOSSIBLE;
 
 
-	typedef ErrorCode_t<errc::INTERNAL, 501> INVALID_MAGIC;
-	typedef ErrorCode_t<errc::INTERNAL, 502> INCONSISTENT;
-	typedef ErrorCode_t<errc::INTERNAL, 503> INVALID_VERSION;
-	typedef ErrorCode_t<errc::INTERNAL, 504> MALFORMED_HEADER;
-
+    typedef ErrorCode_t<errc::INTERNAL, 501> INVALID_MAGIC;
+    typedef ErrorCode_t<errc::INTERNAL, 502> INCONSISTENT;
+    typedef ErrorCode_t<errc::INTERNAL, 503> INVALID_VERSION;
+    typedef ErrorCode_t<errc::INTERNAL, 504> MALFORMED_HEADER;
 }
-
 }
 
 #endif

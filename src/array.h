@@ -11,7 +11,7 @@ class MutableArray_t {
 public:
     typedef Type_t value_type;
 
-    MutableArray_t(size_t len = 16) :
+    explicit MutableArray_t(size_t len = 16) :
         _size(len),
         _data(new Type_t[len])
     {}
@@ -62,6 +62,5 @@ public:
         raise<errcode::NOT_RESIZABLE>("resize not allowed");
     }
 };
-
 }
 #endif

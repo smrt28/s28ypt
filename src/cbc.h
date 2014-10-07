@@ -24,7 +24,6 @@ class ECHelper_t<false> {
 public:
     typedef decrypt_t Direction_t;
 };
-
 }
 
 
@@ -32,7 +31,7 @@ template<typename Cypher_t, bool direction>
 class CBC_t {
 public:
     static const size_t BLOCK_SIZE = Cypher_t::BLOCK_SIZE;
-	static const bool DIRECTION = direction;
+    static const bool DIRECTION = direction;
     typedef Cypher_t BlockCypher_t;
 
 
@@ -46,7 +45,7 @@ public:
     };
 
 
-    CBC_t(Cypher_t &cipher) :
+    explicit CBC_t(Cypher_t &cipher) :
         cipher(cipher)
     {}
 
@@ -82,7 +81,5 @@ private:
 private:
     Cypher_t &cipher;
 };
-
-
 }
 #endif

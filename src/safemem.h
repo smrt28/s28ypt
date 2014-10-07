@@ -94,6 +94,27 @@ public:
         return *t;
     }
 
+    template<typename C_t>
+    void exor(const C_t &cont) {
+        typename C_t::const_iterator it = cont.begin(),
+                 eit = cont.end();
+        iterator ait = begin();
+        for(;it != eit; ++it) {
+            if (ait == end()) return;
+            *ait ^= *it;
+            ait++;
+        }
+    }
+
+    template<typename It_t>
+    void exor(It_t it, It_t eit) {
+        iterator ait = begin();
+        for(;it != eit; ++it) {
+            if (ait == end()) return;
+            *ait ^= *it;
+            ait++;
+        }
+    }
 
     template<typename Ptr_t>
     bool cmp(const Ptr_t &ptr) const {
