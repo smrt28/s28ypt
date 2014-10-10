@@ -192,9 +192,9 @@ void s28_file(const typename Cfg_t::DerivedKey_t &key,
 	IO_t fdout;
 
     Opener_t::forRead(inFile, fdin);
-    Opener_t::forWrite(outFile, fdout);
 
     if (direction) {
+        Opener_t::forWrite(outFile, fdout);
         s28::SafeArray_t<char, BlockCypher_t::KEY_SIZE> master;
         randomize_with_cypher(__aes, master);
         BlockCypher_t masterblock;
@@ -269,6 +269,9 @@ void s28_file(const typename Cfg_t::DerivedKey_t &key,
         BlockCypher_t masterblock;
         masterblock.init(master.get());
         Cypher_t dcyp(masterblock);
+
+        Opener_t::forWrite(outFile, fdout);
+
         aux::decrypt(dcyp, fdin, min);
         digest.finalize(hashres.get());
 
