@@ -20,8 +20,8 @@
 
 #include <string.h>
 #include <string>
-#include <boost/lexical_cast.hpp>
 #include <iostream>
+#include <sstream>
 #include "sha1.h"
 
 #define GET_UINT32(n,b,i)                      \
@@ -359,57 +359,75 @@ int main( int argc, char *argv[] ) {
 }
 #endif
 
-int main(int argc, char **argv) {
-    std::string s;
+void print_box(const std::string &box, const std::string &xfix) {
     uint64_t res[20];
-
+    std::string s;
+    int n = 0;
+    std::cout << "uint64_t " << box << "[256] = {" << std::endl;
     for (int i = 0; i < 256; ++i) {
         sha1_context ctx;
         sha1_starts(&ctx);
-        s = 'a' + boost::lexical_cast<std::string>(i) + 'a';
+        {
+            std::ostringstream oss;
+            oss << xfix << i << xfix;
+            s = oss.str();
+        }
         char *c = strdup(s.c_str());
         sha1_update(&ctx, (uint8 *)c, strlen(c));
         free(c);
         sha1_finish(&ctx, (uint8 *)res);
-        std::cout << std::hex << "0x" << res[0] << "," << std::endl;
+        std::cout << std::hex << "0x" << res[0] << ",";
+        if (n++ == 5)  {
+            n = 0;
+            std::cout << std::endl;
+
+        }
     }
+    std::cout << std::endl << "};" 
+        << std::endl
+        << std::endl;
+}
 
-    std::cout << std::endl;
 
+void print_box32(const std::string &box, const std::string &xfix) {
+    uint32_t res[20];
+    std::string s;
+    int n = 0;
+    std::cout << "uint64_t " << box << "[256] = {" << std::endl;
     for (int i = 0; i < 256; ++i) {
         sha1_context ctx;
         sha1_starts(&ctx);
-        s = 'b' + boost::lexical_cast<std::string>(i) + 'b';
+        {
+            std::ostringstream oss;
+            oss << xfix << i << xfix;
+            s = oss.str();
+        }
         char *c = strdup(s.c_str());
         sha1_update(&ctx, (uint8 *)c, strlen(c));
         free(c);
         sha1_finish(&ctx, (uint8 *)res);
-        std::cout << std::hex << "0x" << res[0] << "," << std::endl;
-    }   
+        std::cout << std::hex << "0x" << res[0] << ",";
+        if (n++ == 5)  {
+            n = 0;
+            std::cout << std::endl;
 
-    std::cout << std::endl;
-    for (int i = 0; i < 256; ++i) {
-        sha1_context ctx;
-        sha1_starts(&ctx);
-        s = 'c' + boost::lexical_cast<std::string>(i) + 'c';
-        char *c = strdup(s.c_str());
-        sha1_update(&ctx, (uint8 *)c, strlen(c));
-        free(c);
-        sha1_finish(&ctx, (uint8 *)res);
-        std::cout << std::hex << "0x" << res[0] << "," << std::endl;
-    }   
+        }
+    }
+    std::cout << std::endl << "};" 
+        << std::endl
+        << std::endl;
+}
 
-    std::cout << std::endl;
-    for (int i = 0; i < 256; ++i) {
-        sha1_context ctx;
-        sha1_starts(&ctx);
-        s = 'd' + boost::lexical_cast<std::string>(i) + 'd';
-        char *c = strdup(s.c_str());
-        sha1_update(&ctx, (uint8 *)c, strlen(c));
-        free(c);
-        sha1_finish(&ctx, (uint8 *)res);
-        std::cout << std::hex << "0x" << res[0] << "," << std::endl;
-    }   
 
+int main(int argc, char **argv) {
+    print_box("box1", "one");
+    print_box("box2", "two");
+    print_box("box3", "three");
+    print_box("box4", "four");
+    
+    print_box32("abox1", "eno");
+    print_box32("abox2", "owt");
+
+    return 0;
 }
 
