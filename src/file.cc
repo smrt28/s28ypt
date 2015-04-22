@@ -94,13 +94,20 @@ off_t FD_t::seek(off_t offset, Whence_t whence) {
 }
 
 void FileOpener_t::forRead(const std::string &fname, FD_t &fd) {
-	fd.set(open(fname.c_str(), O_RDONLY));
-
+    int f = open(fname.c_str(), O_RDONLY);
+    if (f < 0) {
+        (raiser_t<errcode::INVALID_FD>() << "can't open: " << fname).raise();
+    }
+    fd.set(f);
 }
 
 void FileOpener_t::forWrite(const std::string &fname, FD_t &fd) {
 	mode_t mode = S_IRUSR | S_IWUSR | O_TRUNC;
-    fd.set(open(fname.c_str(), O_WRONLY | O_CREAT, mode));
+    int f = open(fname.c_str(), O_WRONLY | O_CREAT, mode);
+    if (f < 0) {
+        (raiser_t<errcode::INVALID_FD>() << "can't open: " << fname).raise();
+    }
+    fd.set(f);
 }
 
 

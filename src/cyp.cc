@@ -290,7 +290,8 @@ char * getpass(const char *msg) {
 
 struct Params_t {
     template<typename It_t>
-    Params_t(It_t it, It_t eit) : encrypt(true) {
+    Params_t(It_t it, It_t eit) :
+        encrypt(true), usepw(true) {
         char p = 0;
         int eset = 0;
         for(;it != eit;++it) {
@@ -310,6 +311,11 @@ struct Params_t {
                 continue;
             }
 
+            if (val == "-P") {
+                usepw = false;
+                continue;
+            }
+
             if (p == 0) {
                 if (ifile.empty()) {
                     ifile = *it;
@@ -319,7 +325,7 @@ struct Params_t {
                     ofile = *it;
                     continue;
                 }
-                s28::raise<s28::errcode::ARGS>("args");
+                s28::raise<s28::errcode::ARGS>("args1");
             }
 
             if (p == 'f') {
@@ -328,9 +334,13 @@ struct Params_t {
             }
         }
 
+        if (!usepw && keyfiles.empty()) {
+            s28::raise<s28::errcode::ARGS>("args2");
+        }
+
         if (ifile.empty() || ofile.empty()
                 || eset != 1) {
-            s28::raise<s28::errcode::ARGS>("args");
+            s28::raise<s28::errcode::ARGS>("args3");
         }
     }
 
@@ -338,6 +348,7 @@ struct Params_t {
     std::string ofile;
     std::vector<std::string> keyfiles;
     bool encrypt;
+    bool usepw;
 };
 
 
@@ -359,28 +370,29 @@ int _main(int argc, char **argv) {
 
     Params_t params(argv + 1, argv + argc);
 
+    s28::KeyFactory_t<Digest_t, Cypher_t> pass;
 
-    char *ptmp = aux::getpass("Enter password:");
-    size_t sz = strlen(ptmp);
-    s28::SafePtr_t<char, 128 + 1> rawpass;
-    strcpy(rawpass.get(), ptmp);
-    memset(ptmp, 0, sz);
+    if (params.usepw) {
+        char *ptmp = aux::getpass("Enter password:");
+        size_t sz = strlen(ptmp);
+        s28::SafePtr_t<char, 128 + 1> rawpass;
+        strcpy(rawpass.get(), ptmp);
+        memset(ptmp, 0, sz);
 
-    if (params.encrypt) {
-        ptmp = aux::getpass("Re-enter password:");
+        if (params.encrypt) {
+            ptmp = aux::getpass("Re-enter password:");
 
-        if (strcmp(ptmp, rawpass.get()) != 0) {
-            std::cout << "err: doesn't match" << std::endl;
-            size_t sz = strlen(ptmp);
+            if (strcmp(ptmp, rawpass.get()) != 0) {
+                size_t sz = strlen(ptmp);
+                memset(ptmp, 0, sz);
+                s28::raise<s28::errcode::INCONSISTENT>("doesn't match");
+            }
+
             memset(ptmp, 0, sz);
-            return 1;
         }
 
-        memset(ptmp, 0, sz);
+        pass.init(rawpass.get());
     }
-
-    s28::KeyFactory_t<Digest_t, Cypher_t> pass;
-    pass.init(rawpass.get());
 
     add_key_files(pass, params.keyfiles.begin(),
             params.keyfiles.end(), s28::FileOpener_t());

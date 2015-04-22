@@ -5,6 +5,7 @@
 
 #include <string>
 #include <exception>
+#include <sstream>
 
 #include "errorcodes.h"
 
@@ -59,6 +60,27 @@ template<typename Code_t>
 void raise(const std::string &msg = std::string()) {
     throw Error_t<Code_t>(msg);
 }
+
+
+template<typename Code_t>
+class raiser_t {
+public:
+    raiser_t() {}
+
+    template<typename T_t>
+    raiser_t & operator << (T_t t) {
+        oss << t;
+        return *this;
+    }
+
+    void raise() {
+        s28::raise<Code_t>(oss.str());
+    }
+    
+    std::ostringstream oss;
+};
+
+
 
 
 }
