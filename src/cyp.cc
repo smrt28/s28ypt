@@ -325,7 +325,7 @@ struct Params_t {
                     ofile = *it;
                     continue;
                 }
-                s28::raise<s28::errcode::ARGS>("args1");
+                RAISE(ARGS) << "i/o file not set";
             }
 
             if (p == 'f') {
@@ -335,12 +335,12 @@ struct Params_t {
         }
 
         if (!usepw && keyfiles.empty()) {
-            s28::raise<s28::errcode::ARGS>("args2");
+            RAISE(ARGS) << "no password nor keyfile selected";
         }
 
-        if (ifile.empty() || ofile.empty()
-                || eset != 1) {
-            s28::raise<s28::errcode::ARGS>("args3");
+        if (ifile.empty() || ofile.empty() || eset != 1)
+        {
+            RAISE(ARGS) << "coose eighter -e or -d";
         }
     }
 

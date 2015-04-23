@@ -31,6 +31,7 @@ namespace errcode {
     typedef ErrorCode_t<errc::IO, 201> WRITE;
     typedef ErrorCode_t<errc::IO, 202> STAT;
     typedef ErrorCode_t<errc::IO, 203> SEEK;
+    typedef ErrorCode_t<errc::IO, 204> OPEN;
 
     // MARSHAL category
     typedef ErrorCode_t<errc::MARSHAL, 301> BOUNDS;

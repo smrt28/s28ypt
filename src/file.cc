@@ -47,7 +47,7 @@ ssize_t FD_t::read(void *buf, size_t len) {
        raise<errcode::READ>("read failed");
     }
 
-    return rv;    
+    return rv;
 }
 
 
@@ -58,7 +58,7 @@ ssize_t FD_t::write(void *buf, size_t len) {
        raise<errcode::WRITE>("write failed");
     }
 
-    return rv;    
+    return rv;
 }
 
 off_t FD_t::size() {
@@ -96,7 +96,7 @@ off_t FD_t::seek(off_t offset, Whence_t whence) {
 void FileOpener_t::forRead(const std::string &fname, FD_t &fd) {
     int f = open(fname.c_str(), O_RDONLY);
     if (f < 0) {
-        (raiser_t<errcode::INVALID_FD>() << "can't open: " << fname).raise();
+        RAISE(OPEN) <<  "can't open file for reading: " << fname;
     }
     fd.set(f);
 }
@@ -105,7 +105,7 @@ void FileOpener_t::forWrite(const std::string &fname, FD_t &fd) {
 	mode_t mode = S_IRUSR | S_IWUSR | O_TRUNC;
     int f = open(fname.c_str(), O_WRONLY | O_CREAT, mode);
     if (f < 0) {
-        (raiser_t<errcode::INVALID_FD>() << "can't open: " << fname).raise();
+        RAISE(OPEN) <<  "can't open file for writing: " << fname;
     }
     fd.set(f);
 }

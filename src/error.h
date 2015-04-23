@@ -62,26 +62,39 @@ void raise(const std::string &msg = std::string()) {
 }
 
 
-template<typename Code_t>
-class raiser_t {
+namespace detail {
+
+class RErr_t {
 public:
-    raiser_t() {}
+    RErr_t() {
+        oss.exceptions(std::ios_base::failbit | std::ios_base::badbit);
+    }
 
     template<typename T_t>
-    raiser_t & operator << (T_t t) {
-        oss << t;
+    RErr_t & operator <<(T_t val) {
+        oss << val;
         return *this;
     }
 
-    void raise() {
-        s28::raise<Code_t>(oss.str());
+    std::string str() const {
+        return oss.str();
     }
-    
+private:
     std::ostringstream oss;
 };
 
+template<typename EC_t>
+class LErr_t {
+public:
+    void operator=(RErr_t &re) {
+        s28::raise<EC_t>(re.str());
+    }
+};
 
+} // namespace detail
 
+#define RAISE(code)\
+    s28::detail::LErr_t<s28::errcode::code>()=s28::detail::RErr_t()
 
 }
 
