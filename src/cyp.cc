@@ -340,7 +340,7 @@ struct Params_t {
 
         if (ifile.empty() || ofile.empty() || eset != 1)
         {
-            RAISE(ARGS) << "coose eighter -e or -d";
+            RAISE(ARGS) << "chose eighter -e or -d";
         }
     }
 
